@@ -39,7 +39,8 @@ npm run dev -- --demo
 | Tab                      | Switch sidebar / conversation scroll mode                       |
 | Enter from sidebar       | Focus conversation in scroll mode                               |
 | i                        | Enter insert mode                                               |
-| l on an image or sticker | Expand to fill the right pane; h or Escape returns              |
+| l on an image or sticker | Fit full height; l again fills width; j/k scroll                |
+| l on a video             | Play inside the right pane; h, q, or Escape returns             |
 | Enter in insert mode     | Send text                                                       |
 | Escape                   | Return to scroll mode, preserving your draft                    |
 | Ctrl+F / Ctrl+B          | Move a full page down / up in scroll mode                       |
@@ -68,6 +69,14 @@ Selecting an image message loads its inline PNG/JPEG preview (up to 2 MiB and
 OpenTUI chooses the terminal's image protocol, with Unicode blocks as a fallback.
 Failed or unsupported images retain their text placeholder. Previews are held
 in memory with a bounded cache and cleared when switching conversations.
+
+Video playback requires mpv. Press `l` on a video to play it inside the right
+pane while the chat list stays visible. `Space` pauses, left/right arrows seek
+five seconds, and `h`, `q`, or Escape returns to the conversation. Frames update
+at up to 12 fps using the terminal image protocol (or Unicode blocks as a fallback).
+Escape also cancels a pending download.
+Temporary video files are removed after playback. The backend limits downloads
+to 20 MiB.
 
 Outgoing messages show `✓` after sending and `✓✓` when a live read receipt is
 observed. In groups, this means at least one other member has read the message.

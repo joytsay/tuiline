@@ -654,8 +654,19 @@ test('l expands the selected image and h or Escape restores the conversation', a
   await setup.renderOnce();
   const imageScroll = setup.renderer.root.findDescendantById('line-expanded-scroll');
   assert.ok(image.image);
+  assert.equal(image.height, imageScroll.viewport.height);
+  assert.match(setup.captureCharFrame(), /Full height/);
+  setup.mockInput.pressKey('l');
+  await setup.renderOnce();
+  await setup.renderOnce();
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Full width/);
+  assert.ok(
+    setup.captureSpans().lines[image.y + 2].spans.some((span) => span.bg.r > 0.9 && span.bg.g < 0.1),
+    'expanded image pixels must be visible near the top of the pane',
+  );
   assert.equal(image.width, imageScroll.viewport.width);
-  assert.equal(image.height, Math.ceil(image.width * image.cellAspectRatio));
+  assert.equal(image.height, Math.ceil(image.width / image.cellAspectRatio));
   assert.ok(image.height > imageScroll.viewport.height);
   const historyTop = history.scrollTop;
   setup.mockInput.pressKey('j');
@@ -670,7 +681,7 @@ test('l expands the selected image and h or Escape restores the conversation', a
   setup.resize(85, 24);
   await setup.renderOnce();
   await setup.renderOnce();
-  assert.equal(image.height, Math.ceil(image.width * image.cellAspectRatio));
+  assert.equal(image.height, Math.ceil(image.width / image.cellAspectRatio));
   assert.ok(image.width >= history.viewport.width);
   assert.ok(image.height >= history.viewport.height - 1);
   const scrollTop = history.scrollTop;
@@ -685,6 +696,9 @@ test('l expands the selected image and h or Escape restores the conversation', a
   assert.match(setup.captureCharFrame(), /SCROLL/);
   setup.mockInput.pressKey('l');
   assert.equal(overlay.visible, true);
+  await setup.renderOnce();
+  await setup.renderOnce();
+  assert.equal(image.height, imageScroll.viewport.height);
   setup.mockInput.pressEscape();
   assert.equal(overlay.visible, false);
   setup.mockInput.pressEnter();
@@ -752,4 +766,74 @@ test('Escape from insert preserves the viewport when selection is off screen', a
   assert.equal(history.scrollTop, scrollTop);
   assert.equal(app.input.value, 'draft');
   assert.match(setup.captureCharFrame(), /SCROLL \[1\/50\]/);
+});
+
+test('l plays video inside the pane with pause, seek, and return controls', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 100, height: 25, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const calls = [];
+  let finish;
+  const app = await createApp(setup.renderer, backend, {
+    playVideo: (...args) => {
+      calls.push(args);
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    },
+  });
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  backend.emit('state', {
+    chats: [{ id: 'chat', name: 'Alice' }],
+    selectedId: 'chat',
+    session: 'session',
+    selection: 1,
+    status: 'ready',
+    draft: 'saved draft',
+    messages: [{ id: '123', contentType: 2, text: '[Video]', downloadable: true }],
+  });
+  await setup.renderOnce();
+  setup.mockInput.pressKey('l');
+  setup.mockInput.pressKey('l');
+  setup.mockInput.pressKey('l');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0][2], { id: 'chat', session: 'session', selection: 1 });
+  assert.equal(calls[0][3], '123');
+  assert.equal(app.input.value, 'saved draft');
+  const controls = [];
+  calls[0][4].onReady({ togglePause: () => controls.push('pause'), seek: (seconds) => controls.push(seconds) });
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC',
+    'base64',
+  );
+  calls[0][4].onFrame(png);
+  const videoImage = setup.renderer.root.findDescendantById('line-video-image');
+  await videoImage.loadPromise;
+  await setup.renderOnce();
+  const videoView = setup.renderer.root.findDescendantById('line-video-view');
+  assert.equal(videoView.visible, true);
+  assert.ok(videoImage.x >= videoView.x);
+  assert.ok(videoImage.x + videoImage.width <= videoView.x + videoView.width);
+  assert.match(setup.captureCharFrame(), /Alice/);
+  assert.ok(setup.captureSpans().lines.some((line) => line.spans.some((span) => span.bg.r > 0.9 && span.bg.g < 0.1)));
+  setup.mockInput.pressKey(' ');
+  setup.mockInput.pressArrow('left');
+  setup.mockInput.pressArrow('right');
+  assert.deepEqual(controls, ['pause', -5, 5]);
+  finish();
+  await new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+  assert.equal(videoView.visible, false);
+  assert.equal(videoImage.source, undefined);
+  setup.mockInput.pressKey('l');
+  assert.equal(calls.length, 2);
+  setup.mockInput.pressEscape();
+  assert.equal(calls[1][4].signal.aborted, true);
+  finish();
 });

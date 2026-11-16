@@ -2,12 +2,13 @@
 
 const { Backend, resolveBackend } = require('./backend');
 const { linksIn, openUrl } = require('./links');
+const { playVideo } = require('./video');
 
 // Remote strings are plain text; strip terminal control bytes before display.
 // eslint-disable-next-line no-control-regex
 const clean = (value) => String(value ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 
-async function createApp(renderer, backend, { openLink = openUrl } = {}) {
+async function createApp(renderer, backend, { openLink = openUrl, playVideo: playback = playVideo } = {}) {
   const { default: stringWidth } = await import('string-width');
   const {
     BoxRenderable: Box,
@@ -91,7 +92,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   const status = new Text(renderer, { content: '', fg: '#a6bdaf', height: 2 });
   const linkPicker = new Text(renderer, { content: '', fg: green, visible: false, maxHeight: 10 });
   const hints = new Text(renderer, {
-    content: ' CHATS · j/k select · l/Enter conversation · i insert · l links/image · ^R refresh · ^C quit',
+    content: ' CHATS · j/k select · l/Enter conversation · i insert · l links/media · ^R refresh · ^C quit',
     fg: green,
     height: 1,
   });
@@ -127,12 +128,17 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     protocol: 'auto',
   });
   const expandedNote = new Text(renderer, { content: 'Loading image…', height: 1, fg: green });
+  let expandedFullWidth = false;
   const sizeExpandedImage = () => {
+    if (!expandedFullWidth) {
+      expandedImage.height = Math.max(1, expandedScroll.viewport.height);
+      return;
+    }
     const image = expandedImage.image;
     if (!image) return;
     expandedImage.height = Math.max(
       1,
-      Math.ceil((expandedImage.width * expandedImage.cellAspectRatio * image.height) / image.width),
+      Math.ceil((expandedImage.width * image.height) / (expandedImage.cellAspectRatio * image.width)),
     );
   };
   expandedImage.onLoad = sizeExpandedImage;
@@ -144,6 +150,29 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   expandedView.add(expandedScroll);
   expandedView.add(expandedNote);
   pane.add(expandedView);
+  const videoView = new Box(renderer, {
+    id: 'line-video-view',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: '100%',
+    height: '100%',
+    flexDirection: 'column',
+    backgroundColor: '#101714',
+    visible: false,
+    zIndex: 11,
+  });
+  const videoImage = new Image(renderer, {
+    id: 'line-video-image',
+    width: '100%',
+    flexGrow: 1,
+    minHeight: 0,
+    fit: 'fit',
+    protocol: 'auto',
+  });
+  videoView.add(videoImage);
+  videoView.add(new Text(renderer, { content: 'Space pause · ←/→ seek · h / q / Esc return', height: 1, fg: green }));
+  pane.add(videoView);
   body.add(chats);
   body.add(pane);
   root.add(header);
@@ -169,6 +198,8 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   let previewTarget = '';
   let previewContext = '';
   let expandedMessageId = '';
+  let videoController;
+  let videoControls;
   const safeImage = (source) =>
     typeof source === 'string' &&
     source.length <= 2800000 &&
@@ -197,7 +228,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       history: `SCROLL [${messageCursor + 1}/${messageRows.length}] · j/k select · ^D/^U page · i insert · h chats`,
       insert: 'INSERT · Enter send · Esc scroll · Tab chats',
     };
-    hints.content = ` ${help[mode]} · l links/image · ^R refresh · ^C quit`;
+    hints.content = ` ${help[mode]} · l links/media · ^R refresh · ^C quit`;
     if (mode === 'history') {
       if (previousMode === 'chats' && messageRows[messageCursor]) {
         if (messageCursor === messageRows.length - 1) history.scrollTo(history.scrollHeight);
@@ -297,9 +328,13 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     const selected = messageRows.find(({ message }) => message.id === expandedMessageId);
     const source = selected?.image.source;
     if (expandedImage.source !== source) expandedImage.source = source;
-    expandedNote.content = source
-      ? 'j/k scroll · h / Esc to return to conversation'
-      : 'Loading image… · h / Esc to return';
+    if (!source) {
+      expandedNote.content = 'Loading image… · h / Esc to return';
+    } else {
+      expandedNote.content = expandedFullWidth
+        ? 'Full width · j/k scroll · h / Esc to return'
+        : 'Full height · l full width · h / Esc to return';
+    }
   };
   const syncImages = () => {
     if (
@@ -332,6 +367,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     );
     chats.title = ` Chats (${view.chats.length}) `;
     if (changed) {
+      videoController?.abort();
       closeExpanded(false);
       imageCache.clear();
       previewTarget = '';
@@ -455,6 +491,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   };
   backend.on('state', onState);
   backend.on('failure', (message) => {
+    videoController?.abort();
     failed = true;
     closeExpanded(false);
     status.content = clean(message);
@@ -511,9 +548,24 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       key.preventDefault?.();
       if (name === 'escape' || (name === 'h' && !key.ctrl && !key.meta)) closeExpanded();
       if (!key.ctrl && !key.meta) {
+        if (name === 'l') {
+          expandedFullWidth = true;
+          sizeExpandedImage();
+          expandedScroll.scrollTo(0);
+          updateExpanded();
+          hints.content = ' IMAGE · full width · j/k scroll · h / Esc return';
+        }
         if (['j', 'down'].includes(name)) expandedScroll.scrollBy(1);
         if (['k', 'up'].includes(name)) expandedScroll.scrollBy(-1);
       }
+      return;
+    }
+    if (videoController) {
+      key.preventDefault?.();
+      if (['escape', 'h', 'q'].includes(name)) videoController.abort();
+      if (name === 'space') videoControls?.togglePause();
+      if (name === 'left') videoControls?.seek(-5);
+      if (name === 'right') videoControls?.seek(5);
       return;
     }
     if (linkChoices.length) {
@@ -623,6 +675,41 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       revealChat();
     }
     const selectedMessage = messageRows[messageCursor];
+    if (name === 'l' && mode === 'history' && selectedMessage?.message.contentType === 2) {
+      key.preventDefault?.();
+      if (!selectedMessage.message.downloadable || failed || view.busy || view.status !== 'ready') {
+        status.content = ' This video is not available for playback';
+        return;
+      }
+      flushDraft();
+      videoController = new AbortController();
+      status.content = ' Downloading video… · Esc cancel';
+      videoView.visible = true;
+      hints.content = ' VIDEO · Space pause · ←/→ seek · h / q / Esc return';
+      playback(renderer, backend, context(), selectedMessage.message.id, {
+        signal: videoController.signal,
+        onFrame: (frame) => {
+          videoImage.source = frame;
+        },
+        onReady: (controls) => {
+          videoControls = controls;
+        },
+      })
+        .then(() => {
+          status.content = ' Video playback finished';
+        })
+        .catch((error) => {
+          status.content = error.name === 'AbortError' ? ' Video playback canceled' : ` ${clean(error.message)}`;
+        })
+        .finally(() => {
+          videoController = undefined;
+          videoControls = undefined;
+          videoImage.source = undefined;
+          videoView.visible = false;
+          focus(mode);
+        });
+      return;
+    }
     if (name === 'l' && mode === 'history' && selectedMessage) {
       const links = linksIn([selectedMessage.message]);
       if (links.length) {
@@ -642,9 +729,11 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     ) {
       key.preventDefault?.();
       expandedMessageId = selectedMessage.message.id;
+      expandedFullWidth = false;
+      sizeExpandedImage();
       expandedScroll.scrollTo(0);
       expandedView.visible = true;
-      hints.content = ' IMAGE · h / Esc to return to conversation';
+      hints.content = ' IMAGE · full height · l full width · h / Esc return';
       requestPreview();
       updateExpanded();
       return;
@@ -663,6 +752,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   return {
     onState,
     dispose: () => {
+      videoController?.abort();
       clearTimeout(draftTimer);
       backend.close();
     },
