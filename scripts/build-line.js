@@ -1,0 +1,65 @@
+'use strict';
+
+const { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } = require('node:fs');
+const os = require('node:os');
+const { patchFile } = require('./line-patches');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const source = process.env.LINE_SOURCE || path.resolve(__dirname, '../../line');
+const output = path.resolve(__dirname, '../backend-bin/line-gui');
+mkdirSync(path.dirname(output), { recursive: true });
+// Apply our chat limits through Go's overlay support; the reference checkout stays untouched.
+const temporary = mkdtempSync(path.join(os.tmpdir(), 'tuigram-line-build-'));
+try {
+  const replace = {};
+  for (const name of [
+    'internal/gui/direct.go',
+    'internal/gui/lifecycle.go',
+    'internal/gui/engine.go',
+    'internal/gui/receive.go',
+    'internal/gui/receipts.go',
+    'internal/gui/features.go',
+    'internal/events/watch.go',
+  ]) {
+    const original = path.resolve(source, 'backend', name);
+    const patched = path.join(temporary, name.replaceAll('/', '-'));
+    const content = patchFile(name, readFileSync(original, 'utf8'))
+      .replace(/(len\([^\n]+?\)\s*(?:>=|>)\s*)500\b/g, (_match, comparison) => `${comparison}5000`)
+      .replace('Up to 500 chats can be loaded.', 'Up to 5000 chats can be loaded.');
+    writeFileSync(patched, content);
+    replace[original] = patched;
+  }
+  replace[path.resolve(source, 'backend/internal/gui/tuigram_read_receipts.go')] = path.resolve(
+    __dirname,
+    '../line-tui/backend/read_receipts.go',
+  );
+  const testing = process.argv.includes('--test');
+  if (testing) {
+    replace[path.resolve(source, 'backend/internal/events/tuigram_read_events_test.go')] = path.resolve(
+      __dirname,
+      '../test/line-backend/read_events_test.go',
+    );
+    replace[path.resolve(source, 'backend/internal/gui/tuigram_read_receipts_test.go')] = path.resolve(
+      __dirname,
+      '../test/line-backend/read_receipts_test.go',
+    );
+    replace[path.resolve(source, 'backend/internal/gui/tuigram_chat_limit_test.go')] = path.resolve(
+      __dirname,
+      '../test/line-backend/chat_limit_test.go',
+    );
+  }
+  const overlay = path.join(temporary, 'overlay.json');
+  writeFileSync(overlay, JSON.stringify({ Replace: replace }));
+  const args = testing
+    ? ['test', '-timeout', '30s', '-overlay', overlay, ...process.argv.slice(3), './internal/gui', './internal/events']
+    : ['build', '-overlay', overlay, '-trimpath', '-buildvcs=false', '-o', output, './cmd/line-gui'];
+  const result = spawnSync('go', args, {
+    cwd: path.join(source, 'backend'),
+    stdio: 'inherit',
+    env: { ...process.env, CGO_ENABLED: '0', GOCACHE: process.env.GOCACHE || '/tmp/tuigram-go-cache' },
+  });
+  if (result.error) process.stderr.write(`${result.error.message}\n`);
+  process.exitCode = result.status ?? 1;
+} finally {
+  rmSync(temporary, { recursive: true, force: true });
+}

@@ -1,14 +1,13 @@
 {
   "name": "tuigram",
   "version": "1.5.1",
-  "description": "Terminal UI client for Telegram",
+  "description": "Terminal UI client for LINE Messenger",
   "keywords": [
-    "telegram",
+    "line",
     "tui",
     "terminal",
     "cli",
     "vim",
-    "mtcute",
     "opentui"
   ],
   "author": "Leonid Shutov <leonid.shutov@hey.com>",
@@ -30,7 +29,9 @@
     "src",
     "types",
     "CHANGELOG.md",
-    "README.md"
+    "README.md",
+    "line-tui",
+    "backend-bin"
   ],
   "engines": {
     "node": ">=26.4.0"
@@ -42,7 +43,9 @@
     "lint": "eslint .",
     "types": "tsc -p tsconfig.json",
     "test": "node --experimental-ffi --disable-warning=ExperimentalWarning --test \"test/**/*.test.js\"",
-    "prepublishOnly": "npm run lint && npm run types && npm test"
+    "prepublishOnly": "npm run lint && npm run types && npm test",
+    "build:line": "node scripts/build-line.js",
+    "dev:telegram": "node bin/telegram.js"
   },
   "dependencies": {
     "@leonid-shutov/uncommonjs": "^2.0.0",

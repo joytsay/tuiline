@@ -1,0 +1,213 @@
+# 📟 tuigram — Telegram Terminal UI Client
+
+A lightweight Telegram client for the terminal, built on
+[OpenTUI](https://github.com/anomalyco/opentui) and [mtcute](https://github.com/mtcute/mtcute),
+with Vim-flavored navigation.
+
+![tuigram in a terminal: a photo in a chat, family messages arriving with desktop notifications, a jump to the family chat with ctrl+p, and a reply sent](docs/demo.gif)
+
+## Install
+
+The quickest way, on Linux or macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/leonid-shutov/tuigram/master/install.sh | bash
+```
+
+It needs nothing preinstalled: it brings its own Node.js into `~/.local/lib/tuigram` and puts
+`tuigram` in `~/.local/bin`. Open a new terminal afterwards. `tuigram upgrade` updates it;
+`rm -rf ~/.local/lib/tuigram ~/.local/bin/tuigram` removes it.
+
+or with Homebrew:
+
+```sh
+brew install leonid-shutov/tap/tuigram
+```
+
+or if you already use mise, which installs Node.js 26 alongside it:
+
+```sh
+mise use -g node@26 npm:tuigram
+```
+
+<!-- AUR package pending: registration on aur.archlinux.org is temporarily closed.
+or on Arch, from the [AUR](https://aur.archlinux.org/packages/tuigram):
+
+```sh
+yay -S tuigram
+```
+-->
+
+or from npm, which needs a Node.js 26.4 or newer of your own:
+
+```sh
+npm install -g tuigram
+```
+
+Then run `tuigram`.
+
+## First run
+
+The first launch shows a QR code: open Telegram on your phone → **Settings → Devices → Link
+Desktop Device** and scan it. Press `p` on that screen to sign in with a phone number and code
+instead. Later launches reuse the stored session and go straight to your chats.
+
+### Using your own API key
+
+1. open <https://my.telegram.org> and log in
+2. choose **API development tools**
+3. fill in any app title and short name, e.g. `tuigram`
+4. copy the `api_id` and `api_hash` shown on the next page
+
+tuigram saves them to `credentials.json` (see [Files](#files)) and uses them from then on. Your
+own key always takes priority, so you can also supply it upfront — in that file, or in the
+environment:
+
+```sh
+export TUIGRAM_API_ID=1234567
+export TUIGRAM_API_HASH=0123456789abcdef0123456789abcdef
+```
+
+## Keys
+
+| Key                               | Does                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------- |
+| `Tab` / `Shift+Tab`               | cycle chat list → messages → message box                                               |
+| `1` `2` `3`                       | jump straight to a pane (not while typing)                                             |
+| `alt+1` `alt+2` `alt+3`           | the same, and works while typing                                                       |
+| `ctrl+p`                          | fuzzy chat search — from anywhere, including mid-message                               |
+| `/`                               | fuzzy chat search — from the chat list or the messages                                 |
+| `?`                               | list the focused pane's keys, searchable; picking one runs it                          |
+| `alt+k`                           | the same, and works while typing                                                       |
+| `j` / `k` / `↑` / `↓`             | move through chats and messages                                                        |
+| `J` / `K` / `Shift+↑` / `Shift+↓` | scroll a message too tall for the pane (its border reads "shift+↓/↑ scroll")           |
+| `gg` / `G`                        | jump to the first / last chat, or oldest / newest message                              |
+| `h` / `l` / `←` / `→`             | previous / next folder in the chat list; previous / next picture in an album           |
+| `H` / `L`                         | narrow / widen the chat list                                                           |
+| `f`                               | in the chat list: pick a folder from a searchable list                                 |
+| `e`                               | in the chat list: pick the chat's emoji from a searchable list                         |
+| `Enter`                           | open the selected chat, open the selected message's media or link, or send the message |
+| `space`                           | a menu of what you can do with the selected message; each action's key works in it too |
+| `y` / `c`                         | copy the selected message's text                                                       |
+| `v`                               | read the selected message in `$VISUAL` / `$EDITOR`, read-only                          |
+| `r`                               | reply to the selected message                                                          |
+| `f`                               | in the messages: forward the selected message to a chat you pick                       |
+| `e`                               | edit the selected message, if it's yours                                               |
+| `d`                               | delete the selected message, for everyone or just for you                              |
+| `ctrl+o`                          | attach a file from the message box                                                     |
+| `Shift+Enter`                     | start a new line in the message box                                                    |
+| `Esc`                             | leave the message box; cancel a reply or an edit; close the search                     |
+| `ctrl+e`                          | edit `config.json` in `$VISUAL` / `$EDITOR`; changes apply when the editor closes      |
+| `!`                               | expand the error on screen, or dismiss it (not while typing)                           |
+| `alt+e`                           | the same, and works while typing                                                       |
+| `ctrl+r`                          | restart and reconnect (happens on its own after the machine wakes from sleep)          |
+| `shift+u`                         | upgrade tuigram, once a newer release is available (not while typing)                  |
+| `shift+x`                         | dismiss that update notice (not while typing)                                          |
+| `ctrl+c`                          | quit                                                                                   |
+
+On macOS, the `alt+` keys need the terminal to send Option as Alt; out of the box, Option+letter
+types a character instead (Option+U starts an umlaut), and the app never sees the key. `shift+u`,
+`!`, `?` and the other keys without Alt work either way. To turn it on:
+
+- Terminal: Settings → Profiles → Keyboard → "Use Option as Meta key"
+- iTerm2: Settings → Profiles → Keys → Left Option key → "Esc+"
+- Ghostty: `macos-option-as-alt = true` (already the default on U.S. layouts)
+- kitty: `macos_option_as_alt yes`
+- Alacritty: `option_as_alt = "Both"` under `[window]`
+
+A window manager that binds Option+letter itself, as AeroSpace does out of the box, takes those
+keys before the terminal sees them, whatever it is set to.
+
+Every binding is matched on the Latin key it sits on, so the whole keymap keeps working on a
+Cyrillic layout without switching back — `о` moves down, `пп` is `gg`, and so on.
+
+## What is covered
+
+- QR sign-in in the terminal, with phone + code and a 2FA password as fallbacks
+- Live incoming messages, edits and deletions, and read-state sync in both directions
+- Message formatting, with links that are clickable in terminals that support hyperlinks
+- Reactions, typing indicators, and the selected message's date and time
+- Read receipts that only speak up when there's news: a ✓ bar beside your messages the other side
+  hasn't seen yet, which shortens as they read and goes once they've read it all (or a 🙈, if you'd
+  rather have the monkey)
+- Inline photo and video thumbnails — the stripped thumbnail travels inside the message and draws
+  instantly, then an 800px version downloads in the background; albums flip with `h` / `l`
+- Rich previews for ~18 media types, in the chat list and in the message pane
+- Fuzzy chat search, forgiving of a wrong keyboard layout
+- Telegram chat folders
+- Sending text and files; replying to, forwarding, copying, editing and deleting messages
+- Desktop notifications; muted chats stay quiet
+- Per-sender name colors in groups, and a stable per-chat emoji glyph you can change (`e`)
+- Endless upward history paging
+- 15 themes that paint their own background, so they look the same on any terminal
+- An English or Bahasa Melayu interface (`language`); message text itself is never translated
+- A check for a newer release at startup, with a one-key upgrade (`shift+u`)
+
+## Configuration
+
+Optional, and read from `$XDG_CONFIG_HOME/tuigram/config.json`:
+
+```json
+{
+  "theme": "aqua-lime",
+  "imageProtocol": "auto",
+  "dialogEmoji": true,
+  "hints": true,
+  "receipt": "tick",
+  "language": "en",
+  "proxy": "socks5://user:pass@host:port",
+  "updateCheck": true
+}
+```
+
+| Key             | Default     | Values                                                                                                                                                                                         |
+| --------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `theme`         | `aqua-lime` | `tokyo-night`, `blue-green`, `aqua-lime`, `daylight`, `nord`, `gruvbox`, `catppuccin`, `dracula`, `rose-pine`, `solarized-dark`, `mono`, `high-contrast`, `crt-amber`, `y2k`, `ascii-terminal` |
+| `imageProtocol` | `auto`      | `auto`, `kitty`, `sixel`, `blocks`, `off`                                                                                                                                                      |
+| `dialogEmoji`   | `true`      | `true`, `false` — turn off on fonts with no emoji coverage                                                                                                                                     |
+| `hints`         | `true`      | `true`, `false` — set to false to hide the key hint bar and reclaim its row                                                                                                                    |
+| `receipt`       | `tick`      | `tick`, `monkey` — what heads the bar beside your messages the other side hasn't seen; `tick` is a plain ✓, `monkey` a 🙈                                                                      |
+| `language`      | `en`        | `en`, `ms` — the interface language; `ms` is Bahasa Melayu                                                                                                                                     |
+| `proxy`         | _(none)_    | a proxy URL — `socks5://`, `socks4://`, `http://`/`https://`, or a `t.me/proxy?...` MTProxy link; connects directly if unset                                                                   |
+| `updateCheck`   | `true`      | `true`, `false` — check registry.npmjs.org (installer/npm/mise) or the tap's formula (brew) at startup; skipped when `proxy` is set                                                            |
+
+`daylight` is the light theme. `ascii-terminal` draws its borders out of `+`, `-` and `|` for fonts
+without box-drawing glyphs. Unknown keys and invalid values are ignored — each falls back to its
+default — and a file that fails to parse falls back to the defaults entirely; either way, a line
+is logged to `tuigram.log` (see Files below) so a typo doesn't go unnoticed.
+
+## Files
+
+| What            | Where                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| Settings        | `$XDG_CONFIG_HOME/tuigram/config.json` (default `~/.config`)                                  |
+| API credentials | `$XDG_CONFIG_HOME/tuigram/credentials.json` — mode `0600`                                     |
+| Session         | `$XDG_DATA_HOME/tuigram/session.db` (default `~/.local/share`) — mode `0600`                  |
+| Chat emojis     | `$XDG_DATA_HOME/tuigram/emojis.json` — the ones you picked; `logout` deletes it               |
+| Log             | `$XDG_STATE_HOME/tuigram/tuigram.log` (default `~/.local/state`), override with `TUIGRAM_LOG` |
+| Cache           | `$XDG_CACHE_HOME/tuigram` (default `~/.cache`) — thumbnails and opened media, safe to delete  |
+
+Cached files that haven't been used for a week are deleted at startup.
+
+## Commands
+
+```sh
+tuigram            # start
+tuigram logout     # revoke the session and delete it locally
+tuigram upgrade    # check for and install a newer release
+tuigram --help
+tuigram --version
+```
+
+## Development
+
+```sh
+npm install
+npm run dev
+npm test
+```
+
+A git checkout has no Telegram app key, so the first run asks for your own (see
+[Using your own API key](#using-your-own-api-key)). [CONTRIBUTING.md](CONTRIBUTING.md) has the
+rest: the checks CI runs, how the tests work, and
+[how the code is laid out](docs/ARCHITECTURE.md).
