@@ -3,6 +3,7 @@
 const { Backend, resolveBackend } = require('./backend');
 const { linksIn, openUrl } = require('./links');
 const { playVideo } = require('./video');
+const { createStickerPicker } = require('./stickers');
 
 // Remote strings are plain text; strip terminal control bytes before display.
 // eslint-disable-next-line no-control-regex
@@ -92,7 +93,8 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
   const status = new Text(renderer, { content: '', fg: '#a6bdaf', height: 2 });
   const linkPicker = new Text(renderer, { content: '', fg: green, visible: false, maxHeight: 10 });
   const hints = new Text(renderer, {
-    content: ' CHATS · j/k select · l/Enter conversation · i insert · l links/media · ^R refresh · ^C quit',
+    content:
+      ' CHATS · j/k select · l/Enter conversation · i insert · l links/media · s stickers · ^R refresh · ^C quit',
     fg: green,
     height: 1,
   });
@@ -170,6 +172,21 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     fit: 'fit',
     protocol: 'auto',
   });
+  const videoLoading = new Box(renderer, {
+    flexGrow: 1,
+    minHeight: 0,
+    justifyContent: 'center',
+    flexDirection: 'column',
+  });
+  const videoProgress = new Text(renderer, {
+    id: 'line-video-progress',
+    content: '',
+    fg: green,
+    width: '100%',
+    textAlign: 'center',
+  });
+  videoLoading.add(videoProgress);
+  videoView.add(videoLoading);
   videoView.add(videoImage);
   videoView.add(new Text(renderer, { content: 'Space pause · ←/→ seek · h / q / Esc return', height: 1, fg: green }));
   pane.add(videoView);
@@ -228,7 +245,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       history: `SCROLL [${messageCursor + 1}/${messageRows.length}] · j/k select · ^D/^U page · i insert · h chats`,
       insert: 'INSERT · Enter send · Esc scroll · Tab chats',
     };
-    hints.content = ` ${help[mode]} · l links/media · ^R refresh · ^C quit`;
+    hints.content = ` ${help[mode]} · l links/media · s stickers · ^R refresh · ^C quit`;
     if (mode === 'history') {
       if (previousMode === 'chats' && messageRows[messageCursor]) {
         if (messageCursor === messageRows.length - 1) history.scrollTo(history.scrollHeight);
@@ -242,6 +259,12 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     const selected = chatRows[cursor];
     if (selected) chats.scrollChildIntoView(selected.row.id);
   };
+  const stickerPicker = await createStickerPicker(renderer, backend, {
+    parent: pane,
+    getContext: context,
+    getView: () => view,
+    onClose: () => focus('history'),
+  });
   chats.viewport.onSizeChange = revealChat;
   const paintChats = () => {
     const key = JSON.stringify(view.chats);
@@ -472,6 +495,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     syncImages();
     requestPreview();
     updateExpanded();
+    stickerPicker.update();
     const login = view.login || {};
     if (login.active) closeExpanded(false);
     loginImage.visible = Boolean(login.image && login.active);
@@ -493,6 +517,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
   backend.on('failure', (message) => {
     videoController?.abort();
     failed = true;
+    stickerPicker.dismiss();
     closeExpanded(false);
     status.content = clean(message);
     imageCache.clear();
@@ -542,6 +567,11 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     }
     if (key.ctrl && name === 'c') {
       renderer.destroy();
+      return;
+    }
+    if (stickerPicker.active) {
+      key.preventDefault?.();
+      stickerPicker.handleKey(key);
       return;
     }
     if (expandedMessageId) {
@@ -638,6 +668,12 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     if (name === 'pageup') history.scrollBy(-10);
     if (name === 'pagedown') history.scrollBy(10);
     if (mode === 'insert' || key.ctrl || key.meta) return;
+    if (name === 's' && !failed) {
+      key.preventDefault?.();
+      flushDraft();
+      stickerPicker.open();
+      return;
+    }
     if (name === 'h') {
       key.preventDefault?.();
       focus('chats');
@@ -685,10 +721,28 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       videoController = new AbortController();
       status.content = ' Downloading video… · Esc cancel';
       videoView.visible = true;
+      videoLoading.visible = true;
+      videoImage.visible = false;
       hints.content = ' VIDEO · Space pause · ←/→ seek · h / q / Esc return';
       playback(renderer, backend, context(), selectedMessage.message.id, {
         signal: videoController.signal,
+        onProgress: ({ received = 0, total = 0, stage }) => {
+          if (stage === 'preparing') {
+            videoProgress.content = 'Download complete\nPreparing video…';
+            return;
+          }
+          const size = (bytes) =>
+            bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MiB` : `${Math.round(bytes / 1024)} KiB`;
+          const ratio = total > 0 ? Math.max(0, Math.min(1, received / total)) : 0;
+          const filled = Math.floor(ratio * 24);
+          const bar = `${'█'.repeat(filled)}${'░'.repeat(24 - filled)}`;
+          const percent = total > 0 ? `${Math.floor(ratio * 100)}%` : 'size unknown';
+          const bytes = total > 0 ? `${size(received)} / ${size(total)}` : `${size(received)} downloaded`;
+          videoProgress.content = `Downloading video\n[${bar}] ${percent}\n${bytes}\nEsc cancel`;
+        },
         onFrame: (frame) => {
+          videoLoading.visible = false;
+          videoImage.visible = true;
           videoImage.source = frame;
         },
         onReady: (controls) => {

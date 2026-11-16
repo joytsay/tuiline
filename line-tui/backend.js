@@ -33,7 +33,7 @@ class Backend extends EventEmitter {
     this.child.stdin.on('error', (error) => this.fail(error.message));
     this.child.on('exit', () => this.fail('LINE backend stopped. Quit and restart to reconnect.'));
     this.child.once('spawn', () => {
-      this.command({ action: 'mode', mode });
+      this.command({ action: 'mode', mode, locale: 'zh-TW' });
       this.command({ action: 'notifications', enabled: false });
       this.command({ action: 'refresh' });
     });

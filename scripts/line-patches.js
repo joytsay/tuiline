@@ -22,6 +22,25 @@ function patchFile(file, source) {
     );
   }
   if (file === 'internal/gui/engine.go') {
+    change(
+      'type Engine struct {',
+      `type Engine struct {
+ stickerPreview *Sticker
+ stickerLoading map[string]uint64`,
+    );
+    change(
+      'case "sticker-open", "sticker-page",',
+      'case "sticker-preview":\n e.previewSticker(c)\n case "sticker-open", "sticker-page",',
+    );
+    change('c.Text == "ja" || c.Text == "en"', 'c.Text == "ja" || c.Text == "en" || c.Text == "zh-TW"');
+    change('c.Locale == "ja" || c.Locale == "en"', 'c.Locale == "ja" || c.Locale == "en" || c.Locale == "zh-TW"');
+    change(
+      'type View struct {',
+      `type View struct {
+ DownloadReceived int64 \`json:"downloadReceived"\`
+ DownloadTotal int64 \`json:"downloadTotal"\`
+ DownloadMessageID string \`json:"downloadMessageId"\``,
+    );
     change('type View struct {', 'type View struct {\n PreviewMessageID string `json:"previewMessageId"`');
     change('v.Preview = ""', 'v.Preview = ""\n v.PreviewMessageID = ""');
     change('type Message struct {', 'type Message struct {\n Read bool `json:"read"`');
@@ -29,6 +48,56 @@ function patchFile(file, source) {
     change('Kind, Revision, ChatID string', 'Kind, Revision, ChatID string\n ReaderID, MessageID string');
     change('func (e *Engine) resetIdentity() {', 'func (e *Engine) resetIdentity() {\n e.readUntil = nil');
     change('merged := map[string]Message{}', 'e.applyReadReceipts(id, rows)\n merged := map[string]Message{}');
+  }
+  if (file === 'internal/gui/images.go') {
+    change(
+      'stickers := []Sticker{}',
+      `stickers := []Sticker{}
+ e.clearStaleStickerLoads()
+ if s := e.activeStickerPreview(); s != nil { stickers = append(stickers, *s) }`,
+    );
+    change(
+      'e.stickerAttempted[key] = true',
+      `e.stickerAttempted[key] = true
+ if e.stickerLoading == nil { e.stickerLoading = map[string]uint64{} }
+ e.stickerLoading[key] = e.stickerGeneration + 1`,
+    );
+    change('e.stickerActive--', 'e.stickerActive--\n delete(e.stickerLoading, key)');
+    change(
+      `total := 0
+				for _, old := range e.stickerData {
+					total += len(old)
+				}
+				if total+len(data) <= 1<<20 {
+					e.stickerData[key] = data
+					e.addSticker(key, data)
+				}`,
+      'e.cacheSticker(key, data)',
+    );
+    change(
+      `func (e *Engine) addSticker(key, data string) {
+	if e.state.StickerImages[key] == data {
+		return
+	}
+	bytes := 2
+	for k, v := range e.state.StickerImages {
+		if k != key {
+			bytes += imageCost(k, v)
+		}
+	}
+	if bytes+imageCost(key, data) > 1<<20 {
+		return
+	}
+	e.state.StickerImages[key] = data
+}`,
+      'func (e *Engine) addSticker(key, data string) { e.cacheSticker(key, data) }',
+    );
+  }
+  if (file === 'internal/gui/locale.go') {
+    change(
+      'func (e *Engine) localizedView() View {',
+      'func (e *Engine) localizedView() View {\n if e.locale == "zh-TW" { return e.chineseView() }',
+    );
   }
   if (file === 'internal/gui/direct.go') {
     change('ChatID: event.ChatID}', 'ChatID: event.ChatID, ReaderID: event.ReaderID, MessageID: event.MessageID}');
@@ -44,8 +113,25 @@ function patchFile(file, source) {
     );
   }
   if (file === 'internal/gui/features.go') {
+    change(
+      'data, err = e.ops.Download(ctx, c.ID, c.MessageID)',
+      'data, err = e.ops.Download(e.downloadContext(ctx, c, epoch, generation), c.ID, c.MessageID)',
+    );
+    change(
+      'e.state.FileStatus = "pending"',
+      `e.state.FileStatus = "pending"
+ e.state.DownloadReceived = 0
+ e.state.DownloadTotal = 0
+ e.state.DownloadMessageID = c.MessageID`,
+    );
     change('e.state.Preview = preview', 'e.state.Preview = preview\n e.state.PreviewMessageID = c.MessageID');
     change('e.state.Preview = ""', 'e.state.Preview = ""\n e.state.PreviewMessageID = ""');
+  }
+  if (file === 'pkg/line/client.go') {
+    change(
+      'body, readErr := io.ReadAll(reader)',
+      'body, readErr := io.ReadAll(TrackDownload(ctx, reader, resp.ContentLength))',
+    );
   }
   if (file === 'internal/gui/receipts.go') {
     change(

@@ -806,6 +806,16 @@ test('l plays video inside the pane with pause, seek, and return controls', asyn
   assert.equal(calls[0][3], '123');
   assert.equal(app.input.value, 'saved draft');
   const controls = [];
+  calls[0][4].onProgress({ received: 5 * 1048576, total: 10 * 1048576, stage: 'downloading' });
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /50%/);
+  assert.match(setup.captureCharFrame(), /5\.0 MiB \/ 10\.0 MiB/);
+  calls[0][4].onProgress({ received: 1048576, total: -1, stage: 'downloading' });
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /size unknown/);
+  calls[0][4].onProgress({ stage: 'preparing' });
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Preparing video/);
   calls[0][4].onReady({ togglePause: () => controls.push('pause'), seek: (seconds) => controls.push(seconds) });
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC',

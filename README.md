@@ -39,6 +39,7 @@ npm run dev -- --demo
 | Tab                      | Switch sidebar / conversation scroll mode                       |
 | Enter from sidebar       | Focus conversation in scroll mode                               |
 | i                        | Enter insert mode                                               |
+| s                        | Browse owned stickers; Enter previews, Enter again sends        |
 | l on an image or sticker | Fit full height; l again fills width; j/k scroll                |
 | l on a video             | Play inside the right pane; h, q, or Escape returns             |
 | Enter in insert mode     | Send text                                                       |
@@ -66,6 +67,19 @@ marker identifies the selected message; `l`/`L` opens links from that message.
 Uppercase `J`/`K`/`H`/`L` also work for navigation.
 Selecting an image message loads its inline PNG/JPEG preview (up to 2 MiB and
 4096×4096). Sticker images supplied by the backend render inline automatically.
+Press `s` outside insert mode to browse owned sticker packs in a compact four-column
+thumbnail grid. Use `h`/`l` to move left/right and `j`/`k` to move down/up;
+arrow keys also work. The grid scrolls to keep the highlight visible. Use
+`[`/`]` to switch packs, and `n`/`p` for pages. Enter selects a sticker for preview;
+Enter again sends it, while Escape cancels. Clear any text draft before sending a
+sticker. Sticker previews are static and silent, matching the reference backend;
+custom text/name stickers remain unsupported.
+Page navigation continues across pack boundaries; the header shows both the
+overall page count and the current pack's pages. Generated backend labels and
+the sticker picker use Traditional Chinese. Contact names, pack titles, and
+message contents stay as received from LINE.
+The preview cache evicts older images as you browse packs; the highlighted
+sticker loads first. Press `r` to retry a missing preview.
 OpenTUI chooses the terminal's image protocol, with Unicode blocks as a fallback.
 Failed or unsupported images retain their text placeholder. Previews are held
 in memory with a bounded cache and cleared when switching conversations.
@@ -78,12 +92,15 @@ Escape also cancels a pending download.
 Temporary video files are removed after playback. The backend limits downloads
 to 20 MiB.
 
+While a video downloads, the pane shows a progress bar with bytes received and,
+when LINE supplies the total size, a percentage. Escape cancels the download.
+
 Outgoing messages show `✓` after sending and `✓✓` when a live read receipt is
 observed. In groups, this means at least one other member has read the message.
 Receipts are session-local; older reads are not inferred from history. The TUI
 does not automatically mark incoming messages as read.
 
-Attachment sending, sticker selection, reactions, and message actions have no
+Attachment sending, reactions, and message actions have no
 TUI controls yet. History is limited to 100 messages per chat. The local build
 supports 5,000 chats; the reference binary caps at 500. Drafts live in memory.
 Uncertain sends are shown and blocked from

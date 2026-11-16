@@ -8,10 +8,11 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 async function playVideo(renderer, backend, context, messageId, options = {}) {
-  const { signal } = options;
+  const { signal, onProgress = () => {} } = options;
   const directory = mkdtempSync(path.join(tmpdir(), 'tuiline-video-'));
   const file = path.join(directory, 'video.mp4');
   try {
+    onProgress({ received: 0, total: 0, stage: 'downloading' });
     backend.command({ action: 'preview-close', ...context });
     await new Promise((resolve, reject) => {
       let timer, onState, onFailure, onAbort; // eslint-disable-line prefer-const
@@ -37,7 +38,12 @@ async function playVideo(renderer, backend, context, messageId, options = {}) {
           view.selection !== context.selection
         ) {
           onAbort();
-        } else if (existsSync(file)) {
+          return;
+        }
+        if (view.downloadMessageId === messageId) {
+          onProgress({ received: view.downloadReceived, total: view.downloadTotal, stage: 'downloading' });
+        }
+        if (existsSync(file)) {
           finish();
         } else if (pending && view.fileStatus === 'idle' && view.sendNote) {
           finish(new Error(view.sendNote));
@@ -57,6 +63,7 @@ async function playVideo(renderer, backend, context, messageId, options = {}) {
       }
     });
     signal?.throwIfAborted();
+    onProgress({ stage: 'preparing' });
     await renderVideo(file, directory, options);
   } finally {
     rmSync(directory, { recursive: true, force: true });

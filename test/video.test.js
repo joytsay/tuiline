@@ -18,6 +18,14 @@ for (const outcome of ['success', 'missing-player', 'download-error', 'changed-c
       if (command.action !== 'download') return;
       file = fileURLToPath(command.url);
       backend.emit('state', { ...context, selectedId: context.id, fileStatus: 'pending' });
+      backend.emit('state', {
+        ...context,
+        selectedId: context.id,
+        fileStatus: 'pending',
+        downloadMessageId: '123',
+        downloadReceived: 512,
+        downloadTotal: 1024,
+      });
       if (outcome === 'success' || outcome === 'missing-player') writeFileSync(file, 'video');
       backend.emit('state', {
         ...context,
@@ -43,6 +51,7 @@ for (const outcome of ['success', 'missing-player', 'download-error', 'changed-c
       return child;
     };
     let frames = 0;
+    const progress = [];
     const createSocket = () => {
       const socket = new EventEmitter();
       socket.destroy = () => {};
@@ -59,6 +68,7 @@ for (const outcome of ['success', 'missing-player', 'download-error', 'changed-c
     const promise = playVideo(renderer, backend, context, '123', {
       spawnPlayer,
       createSocket,
+      onProgress: (value) => progress.push(value),
       onFrame: () => {
         frames++;
       },
@@ -66,7 +76,11 @@ for (const outcome of ['success', 'missing-player', 'download-error', 'changed-c
     if (outcome === 'success') await promise;
     else await assert.rejects(promise, /Install mpv|Download failed|canceled/);
     assert.equal(existsSync(file), false);
-    if (outcome === 'success') assert.ok(frames > 0);
+    if (outcome === 'success') {
+      assert.ok(frames > 0);
+      assert.ok(progress.some((value) => value.received === 512 && value.total === 1024));
+      assert.equal(progress.at(-1).stage, 'preparing');
+    }
     assert.equal(backend.listenerCount('state'), 0);
     assert.equal(backend.listenerCount('failure'), 0);
   });

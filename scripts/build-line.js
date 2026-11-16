@@ -20,6 +20,9 @@ try {
     'internal/gui/receipts.go',
     'internal/gui/features.go',
     'internal/events/watch.go',
+    'pkg/line/client.go',
+    'internal/gui/locale.go',
+    'internal/gui/images.go',
   ]) {
     const original = path.resolve(source, 'backend', name);
     const patched = path.join(temporary, name.replaceAll('/', '-'));
@@ -34,7 +37,35 @@ try {
     '../line-tui/backend/read_receipts.go',
   );
   const testing = process.argv.includes('--test');
+  replace[path.resolve(source, 'backend/internal/gui/tuigram_sticker_cache.go')] = path.resolve(
+    __dirname,
+    '../line-tui/backend/sticker_cache.go',
+  );
+  replace[path.resolve(source, 'backend/internal/gui/tuigram_chinese_locale.go')] = path.resolve(
+    __dirname,
+    '../line-tui/backend/chinese_locale.go',
+  );
+  replace[path.resolve(source, 'backend/pkg/line/tuigram_download_progress.go')] = path.resolve(
+    __dirname,
+    '../line-tui/backend/download_progress.go',
+  );
+  replace[path.resolve(source, 'backend/internal/gui/tuigram_download_progress.go')] = path.resolve(
+    __dirname,
+    '../line-tui/backend/gui_download_progress.go',
+  );
   if (testing) {
+    replace[path.resolve(source, 'backend/internal/gui/tuigram_sticker_cache_test.go')] = path.resolve(
+      __dirname,
+      '../test/line-backend/sticker_cache_test.go',
+    );
+    replace[path.resolve(source, 'backend/internal/gui/tuigram_chinese_locale_test.go')] = path.resolve(
+      __dirname,
+      '../test/line-backend/chinese_locale_test.go',
+    );
+    replace[path.resolve(source, 'backend/internal/gui/tuigram_download_progress_test.go')] = path.resolve(
+      __dirname,
+      '../test/line-backend/download_progress_test.go',
+    );
     replace[path.resolve(source, 'backend/internal/events/tuigram_read_events_test.go')] = path.resolve(
       __dirname,
       '../test/line-backend/read_events_test.go',
