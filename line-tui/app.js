@@ -39,6 +39,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   chats.add(emptyChats);
   const pane = new Box(renderer, {
     flexGrow: 1,
+    flexBasis: 0,
     minWidth: 0,
     flexDirection: 'column',
     border: true,
@@ -61,6 +62,21 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   history.add(emptyMessages);
   let messageRows = [];
   let messageCursor = 0;
+  let openAtBottom = false;
+  root.renderBefore = () => {
+    if (openAtBottom) {
+      history.scrollTo(history.scrollHeight);
+      openAtBottom = false;
+    }
+  };
+  const resizeHistory = history.content.onSizeChange;
+  history.content.onSizeChange = () => {
+    resizeHistory?.call(history.content);
+    if (openAtBottom) {
+      history.scrollTo(history.scrollHeight);
+      openAtBottom = false;
+    }
+  };
   const loginImage = new Image(renderer, { width: 40, height: 20, visible: false, protocol: 'auto' });
   const loginText = new Text(renderer, { content: '', fg: green, visible: false });
   const input = new Input(renderer, {
@@ -75,7 +91,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   const status = new Text(renderer, { content: '', fg: '#a6bdaf', height: 2 });
   const linkPicker = new Text(renderer, { content: '', fg: green, visible: false, maxHeight: 10 });
   const hints = new Text(renderer, {
-    content: ' CHATS · j/k select · l/Enter conversation · i insert · gx links · ^R refresh · ^C quit',
+    content: ' CHATS · j/k select · l/Enter conversation · i insert · l links/image · ^R refresh · ^C quit',
     fg: green,
     height: 1,
   });
@@ -96,19 +112,36 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     backgroundColor: '#101714',
     zIndex: 10,
   });
+  const expandedScroll = new ScrollBox(renderer, {
+    id: 'line-expanded-scroll',
+    flexGrow: 1,
+    minHeight: 0,
+    scrollX: false,
+  });
   const expandedImage = new Image(renderer, {
     id: 'line-expanded-image',
     width: '100%',
-    flexGrow: 1,
-    minHeight: 0,
+    height: 1,
+    flexShrink: 0,
     fit: 'fit',
     protocol: 'auto',
   });
   const expandedNote = new Text(renderer, { content: 'Loading image…', height: 1, fg: green });
+  const sizeExpandedImage = () => {
+    const image = expandedImage.image;
+    if (!image) return;
+    expandedImage.height = Math.max(
+      1,
+      Math.ceil((expandedImage.width * expandedImage.cellAspectRatio * image.height) / image.width),
+    );
+  };
+  expandedImage.onLoad = sizeExpandedImage;
+  expandedView.renderBefore = sizeExpandedImage;
   expandedImage.onError = () => {
     expandedNote.content = 'Cannot display this image · h / Esc to return';
   };
-  expandedView.add(expandedImage);
+  expandedScroll.add(expandedImage);
+  expandedView.add(expandedScroll);
   expandedView.add(expandedNote);
   pane.add(expandedView);
   body.add(chats);
@@ -164,10 +197,11 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       history: `SCROLL [${messageCursor + 1}/${messageRows.length}] · j/k select · ^D/^U page · i insert · h chats`,
       insert: 'INSERT · Enter send · Esc scroll · Tab chats',
     };
-    hints.content = ` ${help[mode]} · gx links · ^R refresh · ^C quit`;
+    hints.content = ` ${help[mode]} · l links/image · ^R refresh · ^C quit`;
     if (mode === 'history') {
-      if (previousMode !== mode && messageRows[messageCursor]) {
-        history.scrollChildIntoView(messageRows[messageCursor].row.id);
+      if (previousMode === 'chats' && messageRows[messageCursor]) {
+        if (messageCursor === messageRows.length - 1) history.scrollTo(history.scrollHeight);
+        else history.scrollChildIntoView(messageRows[messageCursor].row.id);
       }
       // eslint-disable-next-line no-use-before-define
       requestPreview();
@@ -217,7 +251,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
   };
   const paintLinks = () => {
     linkPicker.visible = linkChoices.length > 0;
-    linkPicker.content = `Open link · ↑/↓ choose · Enter open · Esc cancel\n${linkChoices
+    linkPicker.content = `Open link · j/k choose · Enter/l open · Esc/h cancel\n${linkChoices
       .slice(Math.max(0, linkCursor - 3), linkCursor + 4)
       .map((url) => `${url === linkChoices[linkCursor] ? '›' : ' '} ${clean(url)}`)
       .join('\n')}`;
@@ -263,7 +297,9 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     const selected = messageRows.find(({ message }) => message.id === expandedMessageId);
     const source = selected?.image.source;
     if (expandedImage.source !== source) expandedImage.source = source;
-    expandedNote.content = source ? 'h / Esc to return to conversation' : 'Loading image… · h / Esc to return';
+    expandedNote.content = source
+      ? 'j/k scroll · h / Esc to return to conversation'
+      : 'Loading image… · h / Esc to return';
   };
   const syncImages = () => {
     if (
@@ -318,6 +354,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     if (key !== messageKey) {
       messageKey = key;
       const previousId = messageRows[messageCursor]?.message.id;
+      if (changed || !messageRows.length) openAtBottom = true;
       const following = messageCursor === messageRows.length - 1;
       for (const { row } of messageRows) row.destroyRecursively();
       messageCursor =
@@ -453,36 +490,46 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     backend.command({ action: 'send', ...context(), text: input.value });
   });
   renderer.keyInput.on('keypress', (key) => {
+    const name =
+      !key.ctrl &&
+      !key.meta &&
+      (mode !== 'insert' || expandedMessageId || linkChoices.length) &&
+      /^[jkhl]$/i.test(key.name)
+        ? key.name.toLowerCase()
+        : key.name;
     if (
-      (key.ctrl && ['c', 'r', 'l', 'y', 'x'].includes(key.name)) ||
-      ['tab', 'escape', 'pageup', 'pagedown'].includes(key.name)
+      (key.ctrl && ['c', 'r', 'l', 'y', 'x'].includes(name)) ||
+      ['tab', 'escape', 'pageup', 'pagedown'].includes(name)
     ) {
       key.preventDefault?.();
     }
-    if (key.ctrl && key.name === 'c') {
+    if (key.ctrl && name === 'c') {
       renderer.destroy();
       return;
     }
     if (expandedMessageId) {
       key.preventDefault?.();
-      if (key.name === 'escape' || (key.name === 'h' && !key.ctrl && !key.meta)) closeExpanded();
+      if (name === 'escape' || (name === 'h' && !key.ctrl && !key.meta)) closeExpanded();
+      if (!key.ctrl && !key.meta) {
+        if (['j', 'down'].includes(name)) expandedScroll.scrollBy(1);
+        if (['k', 'up'].includes(name)) expandedScroll.scrollBy(-1);
+      }
       return;
     }
     if (linkChoices.length) {
       key.preventDefault?.();
-      if (key.name === 'escape') linkChoices = [];
-      if (['j', 'down'].includes(key.name)) linkCursor = Math.min(linkChoices.length - 1, linkCursor + 1);
-      if (['k', 'up'].includes(key.name)) linkCursor = Math.max(0, linkCursor - 1);
-      if (key.name === 'return' && linkChoices[linkCursor]) launchLink(linkChoices[linkCursor]);
+      if (name === 'escape' || name === 'h') linkChoices = [];
+      if (['j', 'down'].includes(name)) linkCursor = Math.min(linkChoices.length - 1, linkCursor + 1);
+      if (['k', 'up'].includes(name)) linkCursor = Math.max(0, linkCursor - 1);
+      if (['return', 'l'].includes(name) && linkChoices[linkCursor]) launchLink(linkChoices[linkCursor]);
       paintLinks();
       return;
     }
     if (mode !== 'insert' && !key.ctrl && !key.meta) {
-      const lowerG = key.name === 'g' && !key.shift;
+      const lowerG = name === 'g' && !key.shift;
       const prefixed = prefixAt && Date.now() - prefixAt < 1000;
-      const gx = key.name === 'x' && prefixed;
       const top = lowerG && prefixed;
-      const bottom = key.name === 'G' || (key.name === 'g' && key.shift);
+      const bottom = name === 'G' || (name === 'g' && key.shift);
       prefixAt = lowerG && !top ? Date.now() : 0;
       if (top || bottom) {
         key.preventDefault?.();
@@ -499,39 +546,30 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
         }
         return;
       }
-      if (gx) {
-        key.preventDefault?.();
-        linkChoices = linksIn(messageRows[messageCursor] ? [messageRows[messageCursor].message] : []);
-        linkCursor = 0;
-        if (linkChoices.length === 1) launchLink(linkChoices[0]);
-        else if (linkChoices.length) paintLinks();
-        else status.content = ' No hyperlinks in this conversation';
-        return;
-      }
     }
-    if (key.ctrl && key.name === 'r') backend.command({ action: 'refresh' });
-    if (key.ctrl && key.name === 'l') {
+    if (key.ctrl && name === 'r') backend.command({ action: 'refresh' });
+    if (key.ctrl && name === 'l') {
       backend.command({ action: view.login?.canRetry ? 'login-retry' : 'login', request: `tui-${Date.now()}` });
     }
-    if (key.ctrl && key.name === 'y' && view.login?.canConfirm) {
+    if (key.ctrl && name === 'y' && view.login?.canConfirm) {
       backend.command({ action: 'login-confirm', attempt: view.login.attempt });
     }
-    if (key.ctrl && key.name === 'x') backend.command({ action: 'login-cancel' });
-    if (key.name === 'tab') {
+    if (key.ctrl && name === 'x') backend.command({ action: 'login-cancel' });
+    if (name === 'tab') {
       flushDraft();
       focus(mode === 'chats' ? 'history' : 'chats');
       return;
     }
-    if (key.name === 'escape') {
+    if (name === 'escape') {
       flushDraft();
       focus('history');
       return;
     }
-    if (mode === 'history' && key.ctrl && ['f', 'b', 'd', 'u'].includes(key.name)) {
+    if (mode === 'history' && key.ctrl && ['f', 'b', 'd', 'u'].includes(name)) {
       key.preventDefault?.();
-      const fullPage = ['f', 'b'].includes(key.name);
+      const fullPage = ['f', 'b'].includes(name);
       const page = Math.max(1, Math.floor(history.viewport.height / (fullPage ? 1 : 2)));
-      const distance = ['f', 'd'].includes(key.name) ? page : -page;
+      const distance = ['f', 'd'].includes(name) ? page : -page;
       const selected = messageRows[messageCursor];
       if (selected) {
         const target = selected.row.y + distance;
@@ -545,18 +583,33 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       }
       return;
     }
-    if (key.name === 'pageup') history.scrollBy(-10);
-    if (key.name === 'pagedown') history.scrollBy(10);
+    if (name === 'pageup') history.scrollBy(-10);
+    if (name === 'pagedown') history.scrollBy(10);
     if (mode === 'insert' || key.ctrl || key.meta) return;
-    if (key.name === 'h') {
+    if (name === 'h') {
       key.preventDefault?.();
       focus('chats');
       revealChat();
       return;
     }
-    const delta = { j: 1, down: 1, k: -1, up: -1 }[key.name] || 0;
+    const delta = { j: 1, down: 1, k: -1, up: -1 }[name] || 0;
     if (delta && mode === 'history') {
       key.preventDefault?.();
+      openAtBottom = false;
+      const selected = messageRows[messageCursor];
+      // Keep moving through a tall message before selecting its neighbour.
+      if (selected) {
+        const top = history.viewport.y;
+        const bottom = top + history.viewport.height;
+        if (delta > 0 && selected.row.y + selected.row.height > bottom) {
+          history.scrollBy(1);
+          return;
+        }
+        if (delta < 0 && selected.row.y < top) {
+          history.scrollBy(-1);
+          return;
+        }
+      }
       messageCursor = Math.max(0, Math.min(messageRows.length - 1, messageCursor + delta));
       focus('history');
       if (messageRows[messageCursor]) history.scrollChildIntoView(messageRows[messageCursor].row.id);
@@ -570,24 +623,41 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       revealChat();
     }
     const selectedMessage = messageRows[messageCursor];
+    if (name === 'l' && mode === 'history' && selectedMessage) {
+      const links = linksIn([selectedMessage.message]);
+      if (links.length) {
+        key.preventDefault?.();
+        linkChoices = links;
+        linkCursor = 0;
+        if (links.length === 1) launchLink(links[0]);
+        else paintLinks();
+        return;
+      }
+    }
     if (
-      key.name === 'l' &&
+      name === 'l' &&
       mode === 'history' &&
       selectedMessage &&
       (selectedMessage.message.contentType === 1 || selectedMessage.message.sticker || selectedMessage.image.source)
     ) {
       key.preventDefault?.();
       expandedMessageId = selectedMessage.message.id;
+      expandedScroll.scrollTo(0);
       expandedView.visible = true;
       hints.content = ' IMAGE · h / Esc to return to conversation';
       requestPreview();
       updateExpanded();
       return;
     }
-    if (key.name === 'return' || key.name === 'l' || key.name === 'i') {
+    if (name === 'return' || name === 'l' || name === 'i') {
       key.preventDefault?.();
       if (!view.selectedId && view.chats[cursor]) backend.command({ action: 'select', id: view.chats[cursor].id });
-      focus(key.name === 'i' ? 'insert' : 'history');
+      if (mode === 'chats' && name !== 'i') {
+        messageCursor = Math.max(0, messageRows.length - 1);
+        openAtBottom = true;
+        history.scrollTo(history.scrollHeight);
+      }
+      focus(name === 'i' ? 'insert' : 'history');
     }
   });
   return {

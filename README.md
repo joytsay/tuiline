@@ -61,7 +61,8 @@ same session if the backend reports it is locked.
 
 This version supports listing chats, loading the latest history, text sending,
 live incoming updates, and terminal image rendering. In scroll mode, the `›`
-marker identifies the selected message; `gx` opens links from that message.
+marker identifies the selected message; `l`/`L` opens links from that message.
+Uppercase `J`/`K`/`H`/`L` also work for navigation.
 Selecting an image message loads its inline PNG/JPEG preview (up to 2 MiB and
 4096×4096). Sticker images supplied by the backend render inline automatically.
 OpenTUI chooses the terminal's image protocol, with Unicode blocks as a fallback.

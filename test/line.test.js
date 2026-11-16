@@ -94,14 +94,32 @@ test('j reveals the complete last message', async (t) => {
     selectedId: 'chat',
     messages: Array.from({ length: 20 }, (_, index) => ({
       id: String(index),
-      text: index === 19 ? 'Last message\nMiddle line\nFinal line' : `Message ${index}`,
+      text:
+        index === 19
+          ? `Last message\n${Array.from({ length: 30 }, (_, line) => `Long line ${line}`).join('\n')}\nFinal line`
+          : `Message ${index}`,
     })),
   });
   await setup.renderOnce();
-  setup.mockInput.pressEnter();
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Final line/);
+  setup.mockInput.pressKey('h');
+  setup.mockInput.pressKey('l');
   await setup.mockInput.pressKeys(['g', 'g']);
   await setup.renderOnce();
-  for (let index = 0; index < 19; index++) {
+  assert.doesNotMatch(setup.captureCharFrame(), /Final line/);
+  setup.mockInput.pressKey('h');
+  setup.mockInput.pressKey('l');
+  await setup.renderOnce();
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Final line/);
+  assert.match(setup.captureCharFrame(), /SCROLL \[20\/20\]/);
+  setup.mockInput.pressEnter();
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Final line/);
+  await setup.mockInput.pressKeys(['g', 'g']);
+  await setup.renderOnce();
+  for (let index = 0; index < 100; index++) {
     setup.mockInput.pressKey('j');
     await setup.renderOnce();
   }
@@ -221,7 +239,7 @@ test('chat navigation keeps wrapped rows and their marker visible throughout the
   }
 });
 
-test('gx opens one hyperlink and provides a keyboard picker for multiple links', async (t) => {
+test('l/L opens one hyperlink and provides a keyboard picker for multiple links', async (t) => {
   const { createTestRenderer } = await import('@opentui/core/testing');
   const setup = await createTestRenderer({ width: 100, height: 30 });
   const backend = new EventEmitter();
@@ -235,16 +253,19 @@ test('gx opens one hyperlink and provides a keyboard picker for multiple links',
   });
   const view = { chats: [], messages: [{ text: 'Visit https://example.com.' }], selectedId: 'test' };
   backend.emit('state', view);
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressEnter();
+  setup.mockInput.pressKey('L');
   assert.deepEqual(opened, ['https://example.com']);
   backend.emit('state', { ...view, messages: [{ text: 'https://example.com https://example.org' }] });
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressKey('L');
   await setup.renderOnce();
   assert.match(setup.captureCharFrame(), /Open link/);
-  setup.mockInput.pressArrow('down');
-  setup.mockInput.pressEnter();
+  setup.mockInput.pressKey('J');
+  setup.mockInput.pressKey('K');
+  setup.mockInput.pressKey('J');
+  setup.mockInput.pressKey('L');
   assert.equal(opened.at(-1), 'https://example.org');
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressKey('L');
   setup.mockInput.pressEscape();
   assert.equal(opened.length, 2);
 });
@@ -318,7 +339,7 @@ test('conversation focus starts in scroll mode and Escape restores Vim scrolling
   assert.match(setup.captureCharFrame(), /SCROLL/);
 });
 
-test('message cursor scopes gx and sent ticks change only with a read receipt', async (t) => {
+test('message cursor scopes l/L and sent ticks change only with a read receipt', async (t) => {
   const { createTestRenderer } = await import('@opentui/core/testing');
   const setup = await createTestRenderer({ width: 100, height: 30, kittyKeyboard: true });
   const backend = new EventEmitter();
@@ -343,7 +364,7 @@ test('message cursor scopes gx and sent ticks change only with a read receipt', 
   backend.emit('state', view);
   setup.mockInput.pressEnter();
   setup.mockInput.pressKey('k');
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressKey('L');
   assert.deepEqual(opened, ['https://first.example']);
   await setup.renderOnce();
   assert.match(setup.captureCharFrame(), /You ✓/);
@@ -351,7 +372,7 @@ test('message cursor scopes gx and sent ticks change only with a read receipt', 
   backend.emit('state', { ...view, messages: [{ ...view.messages[0], read: true }, view.messages[1]] });
   await setup.renderOnce();
   assert.match(setup.captureCharFrame(), /You ✓✓/);
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressKey('L');
   assert.equal(opened.at(-1), 'https://first.example');
 });
 
@@ -503,7 +524,7 @@ test('a UI listener exception is never misreported as invalid backend JSON', () 
   );
 });
 
-test('gg and G jump to list boundaries without interfering with gx or insert mode', async (t) => {
+test('gg and G jump to list boundaries without interfering with l/L or insert mode', async (t) => {
   const { createTestRenderer } = await import('@opentui/core/testing');
   const setup = await createTestRenderer({ width: 100, height: 25, kittyKeyboard: true });
   const backend = new EventEmitter();
@@ -534,11 +555,11 @@ test('gg and G jump to list boundaries without interfering with gx or insert mod
   await setup.mockInput.pressKeys(['g', 'g']);
   const history = setup.renderer.root.findDescendantById('line-history');
   assert.equal(history.scrollTop, 0);
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressKey('L');
   assert.equal(opened.at(-1), 'https://example.com/0');
   setup.mockInput.pressKey('g', { shift: true });
   assert.equal(history.scrollTop, Math.max(0, history.scrollHeight - history.viewport.height));
-  await setup.mockInput.pressKeys(['g', 'x']);
+  setup.mockInput.pressKey('L');
   assert.equal(opened.at(-1), 'https://example.com/49');
   setup.mockInput.pressKey('i');
   await setup.mockInput.typeText('ggG');
@@ -570,20 +591,20 @@ test('h leaves conversation focus and l enters scroll mode while insert mode kee
     session: 'test',
   });
   await setup.renderOnce();
-  setup.mockInput.pressKey('l');
-  setup.mockInput.pressKey('k');
+  setup.mockInput.pressKey('L');
+  setup.mockInput.pressKey('K');
   await setup.renderOnce();
   assert.match(setup.captureCharFrame(), /SCROLL/);
   assert.equal(commands.length, 0);
-  setup.mockInput.pressKey('h');
-  setup.mockInput.pressKey('j');
+  setup.mockInput.pressKey('H');
+  setup.mockInput.pressKey('J');
   assert.deepEqual(commands.at(-1), { action: 'select', id: 'bob' });
-  setup.mockInput.pressKey('l');
+  setup.mockInput.pressKey('L');
   setup.mockInput.pressKey('i');
-  await setup.mockInput.typeText('hl');
-  assert.equal(app.input.value, 'hl');
+  await setup.mockInput.typeText('hlJKHL');
+  assert.equal(app.input.value, 'hlJKHL');
   setup.mockInput.pressEscape();
-  setup.mockInput.pressKey('h');
+  setup.mockInput.pressKey('H');
   await setup.renderOnce();
   assert.match(setup.captureCharFrame(), /CHATS/);
   setup.mockInput.pressKey('l', { ctrl: true });
@@ -630,11 +651,26 @@ test('l expands the selected image and h or Escape restores the conversation', a
   backend.emit('state', { ...view, preview: png, previewMessageId: '123' });
   await image.loadPromise;
   await setup.renderOnce();
+  await setup.renderOnce();
+  const imageScroll = setup.renderer.root.findDescendantById('line-expanded-scroll');
   assert.ok(image.image);
+  assert.equal(image.width, imageScroll.viewport.width);
+  assert.equal(image.height, Math.ceil(image.width * image.cellAspectRatio));
+  assert.ok(image.height > imageScroll.viewport.height);
+  const historyTop = history.scrollTop;
+  setup.mockInput.pressKey('j');
+  await setup.renderOnce();
+  assert.equal(imageScroll.scrollTop, 1);
+  setup.mockInput.pressKey('k');
+  await setup.renderOnce();
+  assert.equal(imageScroll.scrollTop, 0);
+  assert.equal(history.scrollTop, historyTop);
   assert.ok(image.width >= history.viewport.width);
   assert.ok(image.height >= history.viewport.height - 1);
   setup.resize(85, 24);
   await setup.renderOnce();
+  await setup.renderOnce();
+  assert.equal(image.height, Math.ceil(image.width * image.cellAspectRatio));
   assert.ok(image.width >= history.viewport.width);
   assert.ok(image.height >= history.viewport.height - 1);
   const scrollTop = history.scrollTop;
@@ -657,4 +693,63 @@ test('l expands the selected image and h or Escape restores the conversation', a
   assert.equal(overlay.visible, true);
   backend.emit('state', { ...view, selectedId: 'other' });
   assert.equal(overlay.visible, false);
+});
+
+test('LINE input stays inside the message border after resizing', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 100, height: 25 });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  for (const width of [100, 65, 150]) {
+    setup.resize(width, 25);
+    app.input.focus();
+    app.input.value = 'A long message '.repeat(30);
+    await setup.renderOnce();
+    await setup.renderOnce();
+    const pane = app.input.parent;
+    assert.equal(app.input.x, pane.x + 1);
+    assert.equal(app.input.x + app.input.width, pane.x + pane.width - 1);
+    assert.equal(setup.captureCharFrame().split('\n')[app.input.y][pane.x + pane.width - 1], '│');
+  }
+});
+
+test('Escape from insert preserves the viewport when selection is off screen', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 100, height: 25, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  backend.emit('state', {
+    chats: [{ id: 'chat', name: 'Alice' }],
+    selectedId: 'chat',
+    messages: Array.from({ length: 50 }, (_, index) => ({ id: String(index), text: `Message ${index}` })),
+  });
+  await setup.renderOnce();
+  setup.mockInput.pressKey('l');
+  setup.mockInput.pressKey('g');
+  setup.mockInput.pressKey('g');
+  await setup.renderOnce();
+  const history = setup.renderer.root.findDescendantById('line-history');
+  history.scrollTo(history.scrollHeight);
+  await setup.renderOnce();
+  const scrollTop = history.scrollTop;
+  assert.ok(scrollTop > 0);
+  setup.mockInput.pressKey('i');
+  await setup.mockInput.typeText('draft');
+  setup.mockInput.pressEscape();
+  await setup.renderOnce();
+  assert.equal(history.scrollTop, scrollTop);
+  assert.equal(app.input.value, 'draft');
+  assert.match(setup.captureCharFrame(), /SCROLL \[1\/50\]/);
 });
