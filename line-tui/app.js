@@ -8,6 +8,7 @@ const { linksIn, openUrl } = require('./links');
 const clean = (value) => String(value ?? '').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 
 async function createApp(renderer, backend, { openLink = openUrl } = {}) {
+  const { default: stringWidth } = await import('string-width');
   const {
     BoxRenderable: Box,
     TextRenderable: Text,
@@ -166,7 +167,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
     hints.content = ` ${help[mode]} · gx links · ^R refresh · ^C quit`;
     if (mode === 'history') {
       if (previousMode !== mode && messageRows[messageCursor]) {
-        history.scrollChildIntoView(messageRows[messageCursor].marker.id);
+        history.scrollChildIntoView(messageRows[messageCursor].row.id);
       }
       // eslint-disable-next-line no-use-before-define
       requestPreview();
@@ -326,12 +327,23 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
               0,
               view.messages.findIndex((message) => message.id === previousId),
             );
+      const messageTexts = view.messages.map((message) => {
+        const sent = message.own && ['ok', 'sent', 'delivered'].includes(message.status);
+        let tick = sent ? ' ✓' : '';
+        if (message.own && message.read) tick = ' ✓✓';
+        const sender = message.own ? 'You' : clean(message.sender);
+        const heading = `${clean(message.day)} ${clean(message.time)}  ${sender}${tick}`;
+        const text = clean(message.text || message.sticker?.alt || message.fileName || '[Attachment]');
+        const bodyText = `${heading}${message.replyTo ? ' ↪ reply' : ''}\n${text}`;
+        return bodyText;
+      });
       messageRows = view.messages.map((message, index) => {
         const row = new Box(renderer, {
           id: `line-message-${index}`,
           backgroundColor: mode === 'history' && index === messageCursor ? '#182a20' : 'transparent',
           width: '100%',
           flexDirection: 'row',
+          justifyContent: message.own ? 'flex-end' : 'flex-start',
           flexShrink: 0,
           marginBottom: 1,
         });
@@ -343,17 +355,18 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
           fg: green,
           content: mode === 'history' && index === messageCursor ? '›' : ' ',
         });
-        const sent = message.own && ['ok', 'sent', 'delivered'].includes(message.status);
-        let tick = sent ? ' ✓' : '';
-        if (message.own && message.read) tick = ' ✓✓';
-        const sender = message.own ? 'You' : clean(message.sender);
-        const heading = `${clean(message.day)} ${clean(message.time)}  ${sender}${tick}`;
-        const text = clean(message.text || message.sticker?.alt || message.fileName || '[Attachment]');
+        const bodyText = messageTexts[index];
         row.add(marker);
-        const content = new Box(renderer, { flexDirection: 'column', flexGrow: 1, flexShrink: 1, minWidth: 0 });
+        const content = new Box(renderer, {
+          flexDirection: 'column',
+          width: message.own ? 40 : Math.max(...bodyText.split('\n').map((line) => stringWidth(line))),
+          maxWidth: '80%',
+          flexShrink: 1,
+          minWidth: 0,
+        });
         content.add(
           new Text(renderer, {
-            content: `${heading}${message.replyTo ? ' ↪ reply' : ''}\n${text}`,
+            content: bodyText,
             fg: '#d8e5dd',
             width: '100%',
             flexShrink: 0,
@@ -546,7 +559,7 @@ async function createApp(renderer, backend, { openLink = openUrl } = {}) {
       key.preventDefault?.();
       messageCursor = Math.max(0, Math.min(messageRows.length - 1, messageCursor + delta));
       focus('history');
-      if (messageRows[messageCursor]) history.scrollChildIntoView(messageRows[messageCursor].marker.id);
+      if (messageRows[messageCursor]) history.scrollChildIntoView(messageRows[messageCursor].row.id);
       return;
     }
     if (delta && view.chats.length) {

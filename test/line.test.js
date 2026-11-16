@@ -41,6 +41,73 @@ test('LINE backend streams demo state and sends text without an account', async 
   assert.equal(final.draft, '');
 });
 
+test('LINE UI places incoming messages left and own messages right', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 100, height: 30 });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  backend.emit('state', {
+    chats: [],
+    selectedId: 'chat',
+    messages: [
+      { id: '1', own: true, text: 'Outgoing message', replyTo: '2' },
+      { id: '2', own: false, sender: 'Alice', text: 'Incoming message' },
+      { id: '3', own: true, text: 'Short' },
+      { id: '4', own: true, text: 'A long outgoing message '.repeat(5) },
+    ],
+  });
+  await setup.renderOnce();
+  const lines = setup.captureCharFrame().split('\n');
+  const outgoing = lines.find((line) => line.includes('Outgoing message'));
+  const incoming = lines.find((line) => line.includes('Incoming message'));
+  assert.ok(outgoing);
+  assert.ok(incoming);
+  assert.ok(outgoing.indexOf('Outgoing message') > incoming.indexOf('Incoming message'));
+  const short = lines.find((line) => line.includes('Short'));
+  assert.ok(short);
+  assert.equal(short.indexOf('Short'), outgoing.indexOf('Outgoing message'));
+  const history = setup.renderer.root.findDescendantById('line-history');
+  const ownContent = setup.renderer.root.findDescendantById('line-message-0').getChildren()[1];
+  assert.equal(ownContent.width, 40);
+  assert.equal(ownContent.x + ownContent.width, history.viewport.x + history.viewport.width);
+});
+
+test('j reveals the complete last message', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 100, height: 20 });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  backend.emit('state', {
+    chats: [],
+    selectedId: 'chat',
+    messages: Array.from({ length: 20 }, (_, index) => ({
+      id: String(index),
+      text: index === 19 ? 'Last message\nMiddle line\nFinal line' : `Message ${index}`,
+    })),
+  });
+  await setup.renderOnce();
+  setup.mockInput.pressEnter();
+  await setup.mockInput.pressKeys(['g', 'g']);
+  await setup.renderOnce();
+  for (let index = 0; index < 19; index++) {
+    setup.mockInput.pressKey('j');
+    await setup.renderOnce();
+  }
+  assert.match(setup.captureCharFrame(), /Final line/);
+});
+
 test('LINE UI renders history, composes, and preserves unacknowledged drafts', async (t) => {
   const { createTestRenderer } = await import('@opentui/core/testing');
   const setup = await createTestRenderer({ width: 100, height: 30 });
