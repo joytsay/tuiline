@@ -10,12 +10,8 @@ function resolveBackend(args = [], env = process.env) {
   if (index >= 0 && !args[index + 1]) throw new Error('--backend needs a binary path');
   const explicit = index >= 0 ? args[index + 1] : env.LINE_BACKEND;
   if (explicit) return path.resolve(explicit);
-  const source = env.LINE_SOURCE || path.resolve(__dirname, '../../line');
-  const candidates = [
-    path.resolve(__dirname, '../backend-bin/line-gui'),
-    path.join(source, 'build/plugin/bin/line-gui'),
-  ];
-  const found = candidates.find((file) => existsSync(file));
+  const binary = path.resolve(__dirname, '../backend-bin/line-gui');
+  const found = existsSync(binary) ? binary : undefined;
   if (!found) throw new Error('LINE backend missing. Run npm run build:line or set LINE_BACKEND.');
   return found;
 }

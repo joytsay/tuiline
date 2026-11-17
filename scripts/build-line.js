@@ -5,10 +5,10 @@ const os = require('node:os');
 const { patchFile } = require('./line-patches');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const source = process.env.LINE_SOURCE || path.resolve(__dirname, '../../line');
+const source = path.resolve(__dirname, '..');
 const output = path.resolve(__dirname, '../backend-bin/line-gui');
 mkdirSync(path.dirname(output), { recursive: true });
-// Apply our chat limits through Go's overlay support; the reference checkout stays untouched.
+// Apply TUI patches to the bundled backend through Go's overlay support.
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'tuigram-line-build-'));
 try {
   const replace = {};

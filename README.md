@@ -1,14 +1,15 @@
 # tuiline — LINE in your terminal
 
 Original repo from [tuigram](https://github.com/leonid-shutov/tuigram)
+![tuiline showing LINE chats and the sticker picker](screenshot-tuiline.png)
 
-An OpenTUI client for LINE Messenger using the Go backend from
-`/home/joy/Git/line`. The interface stays in the terminal: chats on the left,
+An OpenTUI client for LINE Messenger with its Go backend included in
+[`backend/`](backend/). The interface stays in the terminal: chats on the left,
 conversation history on the right, and a keyboard-operated composer.
 
 ## Run
 
-Requires Node.js 26.4+, the reference LINE checkout, and its Go toolchain:
+Requires Node.js 26.4+ and Go 1.26+. No other repository checkout is needed:
 
 ```sh
 npm ci
@@ -16,13 +17,12 @@ npm run build:line
 npm run dev
 ```
 
-The local build raises the reference backend's 500-chat limit to 5,000.
-If no local binary has been built, the client falls back to
-`../line/build/plugin/bin/line-gui`, which retains the reference limits.
+The build compiles the bundled backend into `backend-bin/line-gui` and applies
+this client's patches, including support for up to 5,000 chats.
+See [backend/UPSTREAM.md](backend/UPSTREAM.md) for source attribution.
 
-Override the checkout with `LINE_SOURCE=/path/to/line`, or run an existing
-binary with `LINE_BACKEND=/path/to/line-gui npm run dev` or
-`npm run dev -- --backend /path/to/line-gui`.
+Run these commands from the `tuiline` repository root. `npm run dev`
+automatically uses `./backend-bin/line-gui`; no backend path is needed.
 
 Try fictional chats without signing in or contacting LINE:
 
@@ -102,7 +102,7 @@ does not automatically mark incoming messages as read.
 
 Attachment sending, reactions, and message actions have no
 TUI controls yet. History is limited to 100 messages per chat. The local build
-supports 5,000 chats; the reference binary caps at 500. Drafts live in memory.
+supports 5,000 chats. Drafts live in memory.
 Uncertain sends are shown and blocked from
 automatic resending; check LINE and refresh before deliberately trying again.
 Desktop notifications are disabled by this frontend.

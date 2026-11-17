@@ -847,3 +847,90 @@ test('l plays video inside the pane with pause, seek, and return controls', asyn
   assert.equal(calls[1][4].signal.aborted, true);
   finish();
 });
+
+test('history starts at newest after delayed load and r replies to the highlighted LINE message', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 110, height: 30, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  const commands = [];
+  backend.command = (command) => commands.push(command);
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  const base = { chats: [], messages: [], selectedId: 'chat', session: 'test', selection: 1 };
+  backend.emit('state', base);
+  const messages = ['100', '101', '102'].map((id) => ({ id, sender: 'Alice', text: `Message ${id}` }));
+  backend.emit('state', { ...base, messages });
+  setup.mockInput.pressKey('i');
+  setup.mockInput.pressEscape();
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /SCROLL \[3\/3\]/);
+  setup.mockInput.pressKey('k');
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /SCROLL \[2\/3\]/);
+  setup.mockInput.pressKey('r');
+  assert.deepEqual(commands.at(-1), {
+    action: 'reply',
+    id: 'chat',
+    session: 'test',
+    selection: 1,
+    messageId: '101',
+  });
+  backend.emit('state', { ...base, messages, reply: { id: '101', sender: 'Alice', text: 'Message 101' } });
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Reply to Alice: Message 101/);
+  assert.match(setup.captureCharFrame(), /INSERT/);
+  app.input.value = 'A reply';
+  setup.mockInput.pressEnter();
+  assert.equal(commands.at(-1).action, 'send');
+  assert.equal(commands.at(-1).text, 'A reply');
+  assert.equal(commands.at(-1).replyTo, '101');
+  setup.mockInput.pressEscape();
+  setup.mockInput.pressEscape();
+  assert.equal(commands.at(-1).action, 'reply-cancel');
+});
+
+test('r and Enter send a native reply through the bundled LINE demo backend', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 110, height: 30, kittyKeyboard: true });
+  const backend = new Backend(resolveBackend(), 'demo');
+  t.after(() => {
+    backend.close();
+    setup.renderer.destroy();
+  });
+  const wait = (predicate) =>
+    new Promise((resolve, reject) => {
+      const listener = (view) => {
+        if (!predicate(view)) return;
+        // eslint-disable-next-line no-use-before-define
+        clearTimeout(timer);
+        backend.off('state', listener);
+        resolve(view);
+      };
+      const timer = setTimeout(() => {
+        backend.off('state', listener);
+        reject(new Error('Reply was not sent by the LINE demo backend'));
+      }, 5000);
+      backend.on('state', listener);
+    });
+  const ready = await wait((view) => view.status === 'ready' && view.messages.length);
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => app.dispose());
+  backend.emit('state', ready);
+  setup.mockInput.pressKey('l');
+  const target = ready.messages.at(-1).id;
+  const replying = wait((view) => view.reply?.id === target);
+  setup.mockInput.pressKey('r');
+  await replying;
+  app.input.value = 'Native reply regression test';
+  const sent = wait((view) => view.messages.some((message) => message.text === 'Native reply regression test'));
+  setup.mockInput.pressEnter();
+  const result = await sent;
+  assert.equal(result.messages.find((message) => message.text === 'Native reply regression test').replyTo, target);
+  assert.equal(result.sendStatus, 'idle');
+  assert.equal(result.draft, '');
+  assert.equal(result.reply, null);
+});

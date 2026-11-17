@@ -13,6 +13,7 @@ Tab                 switch sidebar / conversation scroll mode
 Up/Down or j/k      navigate sidebar or select message
 Enter               focus conversation; send in insert mode
 l on an image       expand in right pane; h or Escape returns
+r                   reply to highlighted message
 i                   enter insert mode
 Ctrl+F / Ctrl+B     scroll conversation a full page
 Ctrl+D / Ctrl+U     scroll conversation half a page
@@ -27,7 +28,6 @@ Ctrl+X              cancel login
 Ctrl+C              quit
 
 LINE_BACKEND        path to the reference LINE backend binary
-LINE_SOURCE         reference checkout (default: ../line)
 --demo              fictional data; no account needed
 
 Legacy Telegram client: node bin/telegram.js

@@ -230,6 +230,11 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
   };
   const focus = (nextMode) => {
     const previousMode = mode;
+    if (nextMode === 'history' && previousMode === 'chats') {
+      messageCursor = Math.max(0, messageRows.length - 1);
+      openAtBottom = true;
+      history.scrollTo(history.scrollHeight);
+    }
     mode = nextMode;
     prefixAt = 0;
     if (mode === 'insert') input.focus();
@@ -242,7 +247,8 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     }
     const help = {
       chats: 'CHATS · j/k select · l/Enter conversation · i insert',
-      history: `SCROLL [${messageCursor + 1}/${messageRows.length}] · j/k select · ^D/^U page · i insert · h chats`,
+      // eslint-disable-next-line max-len
+      history: `SCROLL [${messageCursor + 1}/${messageRows.length}] · j/k select · ^D/^U page · r reply · i insert · h chats`,
       insert: 'INSERT · Enter send · Esc scroll · Tab chats',
     };
     hints.content = ` ${help[mode]} · l links/media · s stickers · ^R refresh · ^C quit`;
@@ -414,7 +420,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       messageKey = key;
       const previousId = messageRows[messageCursor]?.message.id;
       if (changed || !messageRows.length) openAtBottom = true;
-      const following = messageCursor === messageRows.length - 1;
+      const following = !messageRows.length || messageCursor === messageRows.length - 1;
       for (const { row } of messageRows) row.destroyRecursively();
       messageCursor =
         changed || following
@@ -510,8 +516,13 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     loginText.visible = Boolean(login.active || login.canRetry);
     // eslint-disable-next-line max-len
     loginText.content = `${clean(login.statusText)}${login.pin ? `\nPIN: ${clean(login.pin)}` : ''}${login.canConfirm ? '\nCtrl+Y to confirm' : ''}\nCtrl+X cancel · Ctrl+L retry`;
+    status.height = view.reply ? 3 : 2;
+    const replyText = clean(view.reply?.text || '[Attachment]').replace(/\n/g, ' ');
+    const replyHint = view.reply
+      ? `Reply to ${clean(view.reply.sender)}: ${replyText} · Esc in scroll mode cancels\n`
+      : '';
     // eslint-disable-next-line max-len
-    status.content = ` ${clean(view.statusText)}\n ${clean(view.sendNote || view.historyNote || '')}${view.sendStatus === 'pending' ? ' Sending…' : ''}`;
+    status.content = ` ${replyHint}${clean(view.statusText)}\n ${clean(view.sendNote || view.historyNote || '')}${view.sendStatus === 'pending' ? ' Sending…' : ''}`;
   };
   backend.on('state', onState);
   backend.on('failure', (message) => {
@@ -549,7 +560,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       return;
     }
     flushDraft();
-    backend.command({ action: 'send', ...context(), text: input.value });
+    backend.command({ action: 'send', ...context(), text: input.value, replyTo: view.reply?.id || '' });
   });
   renderer.keyInput.on('keypress', (key) => {
     const name =
@@ -643,6 +654,9 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       return;
     }
     if (name === 'escape') {
+      if (mode === 'history' && view.reply && !failed) {
+        backend.command({ action: 'reply-cancel', ...context() });
+      }
       flushDraft();
       focus('history');
       return;
@@ -711,6 +725,13 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       revealChat();
     }
     const selectedMessage = messageRows[messageCursor];
+    if (name === 'r' && mode === 'history' && selectedMessage && !failed && !view.busy) {
+      key.preventDefault?.();
+      flushDraft();
+      backend.command({ action: 'reply', ...context(), messageId: selectedMessage.message.id });
+      focus('insert');
+      return;
+    }
     if (name === 'l' && mode === 'history' && selectedMessage?.message.contentType === 2) {
       key.preventDefault?.();
       if (!selectedMessage.message.downloadable || failed || view.busy || view.status !== 'ready') {
