@@ -5,6 +5,7 @@ const { linksIn, openUrl } = require('./links');
 const { playVideo } = require('./video');
 const { createStickerPicker } = require('./stickers');
 const { createMentionPicker } = require('./mentions');
+const { createLoginLog } = require('./login-log');
 
 // Remote strings are plain text; strip terminal control bytes before display.
 // eslint-disable-next-line no-control-regex
@@ -953,11 +954,15 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
 async function main(args) {
   const binary = resolveBackend(args);
   const { createCliRenderer } = await import('@opentui/core');
+  const loginLog = createLoginLog();
   let app;
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     openConsoleOnError: false,
-    onDestroy: () => app?.dispose(),
+    onDestroy: () => {
+      app?.dispose();
+      loginLog.print();
+    },
   });
   try {
     // Build the UI before spawning so the initial state cannot be missed.
@@ -969,7 +974,10 @@ async function main(args) {
     bridge.close = () => backend?.close();
     app = await createApp(renderer, bridge);
     const backend = new Backend(binary, args.includes('--demo') ? 'demo' : 'live');
-    backend.on('state', (view) => bridge.emit('state', view));
+    backend.on('state', (view) => {
+      loginLog.record(view);
+      bridge.emit('state', view);
+    });
     backend.on('failure', (message) => bridge.emit('failure', message));
   } catch (error) {
     renderer.destroy();

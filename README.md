@@ -68,6 +68,16 @@ reference backend, including its Secret Service requirements. This client uses
 the same saved account as that backend. Avoid simultaneous clients using the
 same session if the backend reports it is locked.
 
+Login progress and failure messages are saved to `./tuiline-login.log`.
+Press `Ctrl+C` to quit and print the recent login diagnostics in the terminal,
+or watch them from another terminal in the repository directory:
+
+```sh
+tail -F ./tuiline-login.log
+```
+
+The log excludes PINs, QR data, credentials, and chat contents.
+
 This version supports listing chats, loading the latest history, text sending,
 live incoming updates, and terminal image rendering. In scroll mode, the `›`
 marker identifies the selected message; `l`/`L` opens links from that message.
