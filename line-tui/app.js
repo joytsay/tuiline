@@ -4,6 +4,7 @@ const { Backend, resolveBackend } = require('./backend');
 const { linksIn, openUrl } = require('./links');
 const { playVideo } = require('./video');
 const { createStickerPicker } = require('./stickers');
+const { createMentionPicker } = require('./mentions');
 
 // Remote strings are plain text; strip terminal control bytes before display.
 // eslint-disable-next-line no-control-regex
@@ -323,6 +324,16 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     getView: () => view,
     onClose: () => focus('history'),
   });
+  const mentionPicker = await createMentionPicker(renderer, backend, {
+    parent: pane,
+    input,
+    getView: () => view,
+    getContext: context,
+    isInsert: () => mode === 'insert',
+  });
+  input.onCursorChange = () => {
+    if (!syncing && !failed) mentionPicker.update();
+  };
   chats.viewport.onSizeChange = revealChat;
   const paintChats = () => {
     const key = JSON.stringify(view.chats);
@@ -556,6 +567,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     requestPreview();
     updateExpanded();
     stickerPicker.update();
+    mentionPicker.update();
     const login = view.login || {};
     if (login.active) closeExpanded(false);
     loginImage.visible = Boolean(login.image && login.active);
@@ -583,6 +595,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     videoController?.abort();
     failed = true;
     stickerPicker.dismiss();
+    mentionPicker.close();
     closeExpanded(false);
     status.content = clean(message);
     imageCache.clear();
@@ -596,12 +609,17 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
   });
   input.on(InputRenderableEvents.INPUT, () => {
     if (syncing || !view.selectedId || failed) return;
+    mentionPicker.update();
     pendingDraft = true;
     draftContext = context();
     clearTimeout(draftTimer);
     draftTimer = setTimeout(flushDraft, 150);
   });
   input.on(InputRenderableEvents.ENTER, () => {
+    if (mentionPicker.active) {
+      mentionPicker.choose();
+      return;
+    }
     if (
       mode !== 'insert' ||
       failed ||
@@ -614,7 +632,15 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       return;
     }
     flushDraft();
-    backend.command({ action: 'send', ...context(), text: input.value, replyTo: view.reply?.id || '' });
+    const mentions = mentionPicker.mentions;
+    const command = {
+      action: 'send',
+      ...context(),
+      text: input.value,
+      replyTo: view.reply?.id || '',
+    };
+    if (mentions.length) command.mentions = mentions;
+    backend.command(command);
   });
   renderer.keyInput.on('keypress', (key) => {
     const name =
@@ -632,6 +658,42 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     }
     if (key.ctrl && name === 'c') {
       renderer.destroy();
+      return;
+    }
+    if (key.ctrl && name.toLowerCase() === 'l') {
+      key.preventDefault?.();
+      if (failed) {
+        status.content = ' 後端已中斷連線，請重新啟動 npm run dev 後登入。';
+        return;
+      }
+      if (view.mode === 'demo') {
+        status.content = ' 示範模式不支援登入，請使用 npm run dev 啟動正式模式。';
+        return;
+      }
+      if (view.login?.active) {
+        status.content = view.login.canConfirm
+          ? ' 請按 Ctrl+Y 確認登入，或 Ctrl+X 取消。'
+          : ' 登入正在進行中，請依畫面指示操作，或按 Ctrl+X 取消。';
+        return;
+      }
+      if (view.busy || view.sendStatus === 'pending') {
+        status.content = ' 目前正在連線或處理傳送結果，請稍候再按 Ctrl+L。';
+        return;
+      }
+      videoController?.abort();
+      stickerPicker.dismiss();
+      mentionPicker.close();
+      closeExpanded(false);
+      linkChoices = [];
+      paintLinks();
+      backend.command({
+        action: view.login?.canRetry ? 'login-retry' : 'login',
+        request: `ui-${Date.now().toString(36)}`,
+      });
+      return;
+    }
+    if (mode === 'insert' && mentionPicker.handleKey(key)) {
+      key.preventDefault?.();
       return;
     }
     if (stickerPicker.active) {
@@ -695,9 +757,6 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       }
     }
     if (key.ctrl && name === 'r') backend.command({ action: 'refresh' });
-    if (key.ctrl && name === 'l') {
-      backend.command({ action: view.login?.canRetry ? 'login-retry' : 'login', request: `tui-${Date.now()}` });
-    }
     if (key.ctrl && name === 'y' && view.login?.canConfirm) {
       backend.command({ action: 'login-confirm', attempt: view.login.attempt });
     }

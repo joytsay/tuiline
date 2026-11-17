@@ -18,30 +18,31 @@ var fullID = regexp.MustCompile(`^(?:[uUcCrR][A-Za-z0-9_-]{43}|[ucr][0-9a-f]{32}
 var numericID = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
 
 type Command struct {
-	MessageIDs   []string `json:"messageIds,omitempty"`
-	Action       string   `json:"action"`
-	Mode         string   `json:"mode,omitempty"`
-	Locale       string   `json:"locale,omitempty"`
-	ID           string   `json:"id,omitempty"`
-	Session      string   `json:"session,omitempty"`
-	Selection    int      `json:"selection,omitempty"`
-	Text         string   `json:"text,omitempty"`
-	Sequence     int      `json:"sequence,omitempty"`
-	ReplyTo      string   `json:"replyTo,omitempty"`
-	AttachmentID string   `json:"attachmentId,omitempty"`
-	ContactID    string   `json:"contactId,omitempty"`
-	MessageID    string   `json:"messageId,omitempty"`
-	Reaction     string   `json:"reaction,omitempty"`
-	Remove       bool     `json:"remove,omitempty"`
-	Confirmed    bool     `json:"confirmed,omitempty"`
-	URL          string   `json:"url,omitempty"`
-	Enabled      bool     `json:"enabled,omitempty"`
-	Focused      bool     `json:"focused,omitempty"`
-	Request      string   `json:"request,omitempty"`
-	Attempt      string   `json:"attempt,omitempty"`
-	PackageID    string   `json:"packageId,omitempty"`
-	StickerID    string   `json:"stickerId,omitempty"`
-	Page         int      `json:"page,omitempty"`
+	Mentions     []Mention `json:"mentions,omitempty"`
+	MessageIDs   []string  `json:"messageIds,omitempty"`
+	Action       string    `json:"action"`
+	Mode         string    `json:"mode,omitempty"`
+	Locale       string    `json:"locale,omitempty"`
+	ID           string    `json:"id,omitempty"`
+	Session      string    `json:"session,omitempty"`
+	Selection    int       `json:"selection,omitempty"`
+	Text         string    `json:"text,omitempty"`
+	Sequence     int       `json:"sequence,omitempty"`
+	ReplyTo      string    `json:"replyTo,omitempty"`
+	AttachmentID string    `json:"attachmentId,omitempty"`
+	ContactID    string    `json:"contactId,omitempty"`
+	MessageID    string    `json:"messageId,omitempty"`
+	Reaction     string    `json:"reaction,omitempty"`
+	Remove       bool      `json:"remove,omitempty"`
+	Confirmed    bool      `json:"confirmed,omitempty"`
+	URL          string    `json:"url,omitempty"`
+	Enabled      bool      `json:"enabled,omitempty"`
+	Focused      bool      `json:"focused,omitempty"`
+	Request      string    `json:"request,omitempty"`
+	Attempt      string    `json:"attempt,omitempty"`
+	PackageID    string    `json:"packageId,omitempty"`
+	StickerID    string    `json:"stickerId,omitempty"`
+	Page         int       `json:"page,omitempty"`
 }
 type Chat struct {
 	PreviewMessage  *Message `json:"-"`
@@ -151,6 +152,9 @@ type PhotoThumbnail struct {
 	Data   string `json:"data"`
 }
 type View struct {
+	Members          []Contact                 `json:"members"`
+	MembersStatus    string                    `json:"membersStatus"`
+	MembersNote      string                    `json:"membersNote"`
 	Mode             string                    `json:"mode"`
 	Session          string                    `json:"session"`
 	Selection        int                       `json:"selection"`
@@ -210,6 +214,8 @@ type LoginEvent struct {
 	Reason string
 }
 type Operations struct {
+	Members         func(context.Context, string) ([]Contact, error)
+	SendMentions    func(context.Context, string, string, string, []Mention) (SendResult, error)
 	Snapshot        func(context.Context) (Snapshot, error)
 	History         func(context.Context, string) ([]Message, error)
 	Send            func(context.Context, string, string, string, *Attachment) (SendResult, error)
@@ -417,6 +423,9 @@ func (e *Engine) available(c Command) bool {
 	return e.current(c) && e.state.Status == "ready" && !e.state.Busy && !e.pending && !e.mutationActive && !e.fileBusy
 }
 func (e *Engine) resetIdentity() {
+	e.state.Members = nil
+	e.state.MembersStatus = "idle"
+	e.state.MembersNote = ""
 	e.epoch++
 	e.stopJobs()
 	e.state.Session = token()
@@ -479,6 +488,8 @@ func (e *Engine) Handle(c Command) {
 		e.startChat(c)
 	case "draft":
 		e.draft(c)
+	case "members":
+		e.loadMembers(c)
 	case "send":
 		e.send(c)
 	case "photos-visible", "photos-hide", "photo-retry":
@@ -594,6 +605,12 @@ func (e *Engine) send(c Command) {
 	if !e.available(c) || c.Text != e.state.Draft || c.AttachmentID != "" && e.state.Attachment == nil || e.state.Stickers.Selected != nil {
 		return
 	}
+	if len(c.Mentions) > 0 {
+		if err := e.validateMentions(c); err != nil {
+			e.state.SendNote = err.Error()
+			return
+		}
+	}
 	reply := e.replies[c.ID]
 	if c.ReplyTo != reply.ID {
 		return
@@ -630,6 +647,8 @@ func (e *Engine) send(c Command) {
 			demoID := 900000 + e.demoSeq
 			e.mu.Unlock()
 			result = SendResult{ID: strconv.Itoa(demoID), ChatID: c.ID, Encrypted: true}
+		} else if len(c.Mentions) > 0 && e.ops.SendMentions != nil {
+			result, err = e.ops.SendMentions(ctx, c.ID, c.Text, reply.ID, c.Mentions)
 		} else if e.ops.Send != nil {
 			result, err = e.ops.Send(ctx, c.ID, c.Text, reply.ID, attachment)
 		} else {
@@ -740,6 +759,9 @@ func (e *Engine) selectChat(id string) {
 		e.products = nil
 		e.focusID = ""
 	}
+	e.state.Members = nil
+	e.state.MembersStatus = "idle"
+	e.state.MembersNote = ""
 	e.state.SelectedID = id
 	e.state.Selection++
 	e.state.Draft = e.drafts[id]

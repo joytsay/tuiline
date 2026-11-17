@@ -14,6 +14,7 @@ Up/Down or j/k      navigate sidebar or select message
 Enter               focus conversation; send in insert mode
 l on an image       expand in right pane; h or Escape returns
 r                   reply to highlighted message
+@ in insert mode    search and mention group members
 i                   enter insert mode
 Ctrl+F / Ctrl+B     scroll conversation a full page
 Ctrl+D / Ctrl+U     scroll conversation half a page

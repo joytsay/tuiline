@@ -82,7 +82,17 @@ try {
   const overlay = path.join(temporary, 'overlay.json');
   writeFileSync(overlay, JSON.stringify({ Replace: replace }));
   const args = testing
-    ? ['test', '-timeout', '30s', '-overlay', overlay, ...process.argv.slice(3), './internal/gui', './internal/events']
+    ? [
+        'test',
+        '-timeout',
+        '30s',
+        '-overlay',
+        overlay,
+        ...process.argv.slice(3),
+        './internal/gui',
+        './internal/events',
+        './internal/messaging',
+      ]
     : ['build', '-overlay', overlay, '-trimpath', '-buildvcs=false', '-o', output, './cmd/line-gui'];
   const result = spawnSync('go', args, {
     cwd: path.join(source, 'backend'),

@@ -1018,3 +1018,53 @@ test('separate reply threads use different stable colors and nested replies keep
   assert.deepEqual(color(1), originalColor);
   assert.deepEqual(color(1), color(3));
 });
+
+test('Ctrl+L opens login from insert and sticker views, retries errors, and explains busy states', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 110, height: 30, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  const commands = [];
+  backend.command = (command) => commands.push(command);
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  const view = {
+    mode: 'live',
+    chats: [{ id: 'chat', name: 'Alice' }],
+    messages: [],
+    selectedId: 'chat',
+    session: 'test',
+    selection: 1,
+    status: 'ready',
+    draft: '',
+    stickers: { status: 'ready', items: [], products: [] },
+  };
+  backend.emit('state', view);
+  setup.mockInput.pressKey('i');
+  setup.mockInput.pressKey('l', { ctrl: true });
+  assert.equal(commands.at(-1).action, 'login');
+  assert.match(commands.at(-1).request, /^ui-[a-z0-9]+$/);
+  assert.ok(commands.at(-1).request.length <= 15);
+  setup.mockInput.pressKey('s');
+  assert.equal(setup.renderer.root.findDescendantById('line-sticker-picker').visible, true);
+  setup.mockInput.pressKey('l', { ctrl: true });
+  assert.equal(commands.at(-1).action, 'login');
+  assert.equal(setup.renderer.root.findDescendantById('line-sticker-picker').visible, false);
+  backend.emit('state', { ...view, login: { canRetry: true } });
+  setup.mockInput.pressKey('l', { ctrl: true });
+  assert.equal(commands.at(-1).action, 'login-retry');
+  const count = commands.length;
+  backend.emit('state', { ...view, busy: true });
+  setup.mockInput.pressKey('l', { ctrl: true });
+  await setup.renderOnce();
+  assert.equal(commands.length, count);
+  assert.match(setup.captureCharFrame(), /請稍候再按 Ctrl\+L/);
+  backend.emit('state', { ...view, login: { active: true, canConfirm: true } });
+  setup.mockInput.pressKey('l', { ctrl: true });
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /Ctrl\+Y/);
+  assert.equal(commands.length, count);
+});

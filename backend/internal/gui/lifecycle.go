@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kongesque/line-cli/internal/session"
 )
 
 func (e *Engine) refresh(resync bool) {
@@ -229,6 +231,13 @@ func (e *Engine) startLogin(c Command) {
 		if err != nil {
 			stage = "error"
 			reason = "ログインできませんでした。保存状態を確認して再試行してください"
+			if errors.Is(err, session.ErrStorageUnavailable) {
+				reason = "無法存取系統金鑰圈。Ubuntu 請安裝 libsecret-tools 和 gnome-keyring，並解鎖登入金鑰圈後重試。"
+			} else if errors.Is(err, session.ErrStorageCleanup) {
+				reason = "登入前的安全儲存測試失敗，請確認金鑰圈已解鎖且儲存目錄可寫入後重試。"
+			} else if errors.Is(err, session.ErrStorageAuthentication) || errors.Is(err, session.ErrStorageFormat) {
+				reason = "無法讀取已儲存的登入資料，請確認目前使用的金鑰圈與儲存設定。"
+			}
 			if errors.Is(err, context.Canceled) {
 				stage = "cancelled"
 				reason = ""

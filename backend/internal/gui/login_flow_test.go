@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/kongesque/line-cli/internal/session"
 )
 
 func TestGUIReplacementQRPinSuccessFlow(t *testing.T) {
@@ -80,4 +82,20 @@ func TestGUICancelAtPINSuppressesLateSuccess(t *testing.T) {
 		t.Fatalf("cancel at PIN: %+v", v.Login)
 	}
 	e.Close()
+}
+
+func TestLoginStorageUnavailableGivesActionableMessage(t *testing.T) {
+	e := NewEngine(Operations{Login: func(context.Context, <-chan struct{}, func(LoginEvent) error) error {
+		return session.ErrStorageUnavailable
+	}}, nil)
+	defer e.Close()
+	e.Handle(Command{Action: "login", Request: "ui-test"})
+	e.Wait()
+	v := e.View()
+	if v.Login.Stage != "error" || !v.Login.CanRetry || !strings.Contains(v.Login.StatusText, "libsecret-tools") {
+		t.Fatalf("storage error lacks actionable guidance: %+v", v.Login)
+	}
+	if v.Login.CanConfirm {
+		t.Fatal("failed login offered replacement confirmation")
+	}
 }

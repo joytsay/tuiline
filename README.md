@@ -9,7 +9,7 @@ conversation history on the right, and a keyboard-operated composer.
 
 ## Run
 
-Requires Node.js 26.4+ and Go 1.26+. No other repository checkout is needed:
+Requires [Node.js 26.4+ and Go 1.26+](INSTALL.md). No other repository checkout is needed:
 
 ```sh
 npm ci
@@ -38,6 +38,7 @@ npm run dev -- --demo
 | h / l                    | Leave / enter conversation focus (outside insert mode)          |
 | Tab                      | Switch sidebar / conversation scroll mode                       |
 | Enter from sidebar       | Focus conversation in scroll mode                               |
+| @ in insert mode         | Search group members and insert a LINE mention                  |
 | i                        | Enter insert mode                                               |
 | s                        | Browse owned stickers; Enter previews, Enter again sends        |
 | l on an image or sticker | Fit full height; l again fills width; j/k scroll                |
@@ -54,6 +55,12 @@ npm run dev -- --demo
 | Ctrl+Y                   | Confirm login when requested                                    |
 | Ctrl+X                   | Cancel login                                                    |
 | Ctrl+C                   | Quit                                                            |
+
+In a group chat, press `i` to type, then type `@` to list group members.
+Type part of a name to filter, use Up/Down to select, and press Enter or Tab
+to insert the mention. Press Escape to close the list. After composing your
+message, press Enter to send it with native LINE mention metadata. You can
+include up to 20 mentions and combine mentions with a reply.
 
 Scan the QR code in the terminal using LINE on your phone, then follow the
 PIN/confirmation prompts. Authentication and encryption remain managed by the

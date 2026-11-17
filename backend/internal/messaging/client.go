@@ -259,7 +259,7 @@ func (c *Client) SendFile(chat string, file Attachment, replyTo string) (*SendRe
 	return c.send(chat, "", replyTo, &file)
 }
 
-func (c *Client) send(chat, text, replyTo string, file *Attachment) (*SendResult, error) {
+func (c *Client) send(chat, text, replyTo string, file *Attachment, mentionSets ...[]Mention) (*SendResult, error) {
 	if err := ValidateChatID(chat); err != nil {
 		return nil, err
 	}
@@ -293,6 +293,16 @@ func (c *Client) send(chat, text, replyTo string, file *Attachment) (*SendResult
 	plain := c.state.NoE2EE
 	groupKeyRegistered := false
 	metadata := make(map[string]string)
+	if len(mentionSets) > 0 && len(mentionSets[0]) > 0 {
+		if kind == 0 || file != nil {
+			return nil, errors.New("mentions require a group text message")
+		}
+		encoded, err := MentionMetadata(text, mentionSets[0])
+		if err != nil {
+			return nil, err
+		}
+		metadata["MENTION"] = encoded
+	}
 	contentType := 0
 	if file != nil {
 		contentType = 14
