@@ -934,3 +934,87 @@ test('r and Enter send a native reply through the bundled LINE demo backend', as
   assert.equal(result.draft, '');
   assert.equal(result.reply, null);
 });
+
+test('reply pairs stay highlighted after sending, navigation, and sidebar focus', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 110, height: 30, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  const base = { chats: [], selectedId: 'chat', session: 'test', selection: 1 };
+  const messages = [
+    { id: '100', sender: 'Alice', text: 'Original' },
+    { id: '101', sender: 'Alice', text: 'Unrelated' },
+  ];
+  backend.emit('state', { ...base, messages });
+  setup.mockInput.pressKey('l');
+  setup.mockInput.pressKey('k');
+  setup.mockInput.pressKey('r');
+  backend.emit('state', { ...base, messages, reply: { id: '100', sender: 'Alice', text: 'Original' } });
+  const node = (index) => setup.renderer.root.findDescendantById(`line-message-${index}`);
+  const marker = (index) => setup.renderer.root.findDescendantById(`line-message-marker-${index}`).plainText;
+  assert.equal(marker(0), '↪');
+  // Follow the newest message, as after sending from the bottom of a conversation.
+  setup.mockInput.pressEscape();
+  setup.mockInput.pressKey('G');
+  setup.mockInput.pressKey('i');
+  backend.emit('state', {
+    ...base,
+    reply: null,
+    messages: [...messages, { id: '102', own: true, text: 'The reply', replyTo: '100' }],
+  });
+  assert.equal(marker(0), '↪');
+  assert.equal(marker(2), '↪');
+  assert.deepEqual(node(0).backgroundColor, node(2).backgroundColor);
+  assert.notDeepEqual(node(0).backgroundColor, node(1).backgroundColor);
+  setup.mockInput.pressEscape();
+  setup.mockInput.pressKey('k');
+  assert.equal(marker(0), '↪');
+  assert.equal(marker(2), '↪');
+  assert.equal(marker(1), '›');
+  setup.mockInput.pressKey('h');
+  assert.equal(marker(0), '↪');
+  assert.equal(marker(2), '↪');
+  assert.deepEqual(node(0).backgroundColor, node(2).backgroundColor);
+});
+
+test('separate reply threads use different stable colors and nested replies keep their thread color', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 110, height: 30, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  const state = {
+    chats: [],
+    selectedId: 'chat',
+    session: 'test',
+    selection: 1,
+    messages: [
+      { id: '100', text: 'First original' },
+      { id: '101', text: 'Second original' },
+      { id: '102', text: 'First reply', replyTo: '100' },
+      { id: '103', text: 'Second reply', replyTo: '101' },
+      { id: '104', text: 'Nested reply', replyTo: '102' },
+    ],
+  };
+  backend.emit('state', state);
+  const color = (index) => setup.renderer.root.findDescendantById(`line-message-${index}`).backgroundColor;
+  assert.deepEqual(color(0), color(2));
+  assert.deepEqual(color(2), color(4));
+  assert.deepEqual(color(1), color(3));
+  assert.notDeepEqual(color(0), color(1));
+  const originalColor = color(0);
+  backend.emit('state', { ...state, messages: [{ id: '99', text: 'Earlier' }, ...state.messages] });
+  assert.deepEqual(color(1), originalColor);
+  assert.deepEqual(color(1), color(3));
+});

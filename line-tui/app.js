@@ -228,6 +228,61 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     backend.command({ action: 'draft', ...draftContext, text: input.value, sequence: ++sequence });
     pendingDraft = false;
   };
+  const replyColors = new Map();
+  // Golden-angle hues spread neighbouring choices across the color wheel.
+  const replyPalette = Array.from({ length: 48 }, (_, index) => {
+    const hue = (index * 137.508) % 360;
+    const hex = (saturation, value) => {
+      const channel = (offset) => {
+        const sector = (offset + hue / 60) % 6;
+        const component = value * (1 - saturation * Math.max(0, Math.min(sector, 4 - sector, 1)));
+        return Math.round(component * 255)
+          .toString(16)
+          .padStart(2, '0');
+      };
+      return `#${channel(5)}${channel(3)}${channel(1)}`;
+    };
+    return [hex(0.55, 0.29), hex(0.4, 0.96)];
+  });
+  const highlightMessages = () => {
+    const pair = new Set();
+    for (const { message } of messageRows) {
+      if (!message.replyTo) continue;
+      pair.add(message.id);
+      pair.add(message.replyTo);
+    }
+    if (view.reply?.id) pair.add(view.reply.id);
+    const byId = new Map(messageRows.map(({ message }) => [message.id, message]));
+    const colorFor = (id) => {
+      const visited = new Set();
+      while (byId.get(id)?.replyTo && !visited.has(id)) {
+        visited.add(id);
+        id = byId.get(id).replyTo;
+      }
+      if (!replyColors.has(id)) {
+        const reply = messageRows.find(({ message }) => message.replyTo === id)?.message;
+        let hash = (reply?.text || byId.get(id)?.text || '').length;
+        for (const character of id) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
+        let slot = hash % replyPalette.length;
+        const used = new Set(replyColors.values());
+        for (let attempt = 0; attempt < replyPalette.length && used.has(replyPalette[slot]); attempt++) {
+          slot = (slot + 1) % replyPalette.length;
+        }
+        replyColors.set(id, replyPalette[slot]);
+      }
+      return replyColors.get(id);
+    };
+    for (const [index, { marker, row, message }] of messageRows.entries()) {
+      const active = mode === 'history' && index === messageCursor;
+      const linked = pair.has(message.id);
+      const selectionColor = active ? '#182a20' : 'transparent';
+      const color = linked ? colorFor(message.id) : null;
+      row.backgroundColor = color ? color[0] : selectionColor;
+      marker.fg = color ? color[1] : green;
+      const relationMarker = linked ? '↪' : ' ';
+      marker.content = active ? '›' : relationMarker;
+    }
+  };
   const focus = (nextMode) => {
     const previousMode = mode;
     if (nextMode === 'history' && previousMode === 'chats') {
@@ -241,10 +296,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     else input.blur();
     chats.borderColor = mode === 'chats' ? green : '#385044';
     pane.borderColor = mode === 'chats' ? '#385044' : green;
-    for (const [index, { marker, row }] of messageRows.entries()) {
-      row.backgroundColor = mode === 'history' && index === messageCursor ? '#182a20' : 'transparent';
-      marker.content = mode === 'history' && index === messageCursor ? '›' : ' ';
-    }
+    highlightMessages();
     const help = {
       chats: 'CHATS · j/k select · l/Enter conversation · i insert',
       // eslint-disable-next-line max-len
@@ -396,6 +448,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
     );
     chats.title = ` Chats (${view.chats.length}) `;
     if (changed) {
+      replyColors.clear();
       videoController?.abort();
       closeExpanded(false);
       imageCache.clear();
@@ -498,6 +551,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
         history.stickyScroll = true;
       }
     }
+    highlightMessages();
     syncImages();
     requestPreview();
     updateExpanded();
