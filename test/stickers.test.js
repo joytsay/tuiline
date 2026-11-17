@@ -58,6 +58,9 @@ test('sticker picker previews hashed images, browses packs/pages, and sends only
   const previewRequests = commands.filter((command) => command.action === 'sticker-preview').length;
   setup.mockInput.pressKey('r');
   assert.equal(commands.filter((command) => command.action === 'sticker-preview').length, previewRequests + 1);
+  const highlighted = setup.renderer.root.findDescendantById('line-sticker-cell-1');
+  assert.ok(highlighted.backgroundColor.g > highlighted.backgroundColor.r);
+  assert.ok(highlighted.backgroundColor.g < 0.3);
   const preview = setup.renderer.root.findDescendantById('line-sticker-preview-1');
   await preview.loadPromise;
   await setup.renderOnce();
@@ -308,4 +311,55 @@ test('sticker grid has four columns, highlights selection, and scrolls after res
   setup.mockInput.pressEnter();
   assert.equal(commands.at(-1).action, 'sticker-choose');
   assert.equal(commands.at(-1).stickerId, '1029');
+});
+
+test('missing highlighted sticker retries three times, reports failure, and allows manual retry', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 100, height: 30, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  const commands = [];
+  backend.command = (command) => commands.push(command);
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  const view = {
+    chats: [],
+    messages: [],
+    selectedId: 'chat',
+    session: 'test',
+    selection: 1,
+    status: 'ready',
+    sendStatus: 'idle',
+    stickerImages: {},
+    stickers: {
+      status: 'ready',
+      open: true,
+      packageId: '1',
+      page: 0,
+      pages: 1,
+      products: [{ id: '1', name: 'Test' }],
+      items: [{ id: '1001', packageId: '1' }],
+    },
+  };
+  backend.emit('state', view);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  setup.mockInput.pressKey('s');
+  const requests = () => commands.filter((command) => command.action === 'sticker-preview').length;
+  const initial = requests();
+  for (let attempt = 0; attempt < 3; attempt++) t.mock.timers.tick(1500);
+  assert.equal(requests(), initial + 3);
+  assert.match(setup.renderer.root.findDescendantById('line-sticker-note').plainText, /載入失敗/);
+  t.mock.timers.tick(10000);
+  assert.equal(requests(), initial + 3);
+  setup.mockInput.pressKey('r');
+  assert.equal(requests(), initial + 4);
+  backend.emit('state', { ...view, stickerImages: { 1001: png } });
+  const preview = setup.renderer.root.findDescendantById('line-sticker-preview-0');
+  await preview.loadPromise;
+  assert.equal(preview.source, png);
+  t.mock.timers.tick(10000);
+  assert.equal(requests(), initial + 4);
 });

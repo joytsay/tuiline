@@ -29,6 +29,9 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
   let gridKey = '';
   const thumbnails = new Map();
   const requested = new Set();
+  const previewRetries = new Map();
+  let retryTimer;
+  let retryKey = '';
   overlay.add(title);
   overlay.add(body);
   overlay.add(note);
@@ -42,6 +45,9 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
   const command = (action, extra = {}) => backend.command({ action, ...getContext(), ...extra });
   const dismiss = () => {
     active = false;
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+    previewRetries.clear();
     sending = false;
     overlay.visible = false;
     for (const cell of cells) cell.image.source = undefined;
@@ -139,6 +145,7 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
       const highlighted = Boolean(catalog.selected) || cell.index === cursor;
       cell.card.borderColor = highlighted ? '#06c755' : '#385044';
       cell.card.backgroundColor = highlighted ? '#20382a' : '#101714';
+      cell.label.fg = '#d8e5dd';
       cell.label.content = `${highlighted ? '›' : ' '} ${cell.index + 1} · ${clean(cell.item.id)}`;
       if (!catalog.selected && !source && !requested.has(key)) {
         requested.add(key);
@@ -150,6 +157,21 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
       command('sticker-preview', { packageId: selected.packageId, stickerId: selected.id });
     }
     const source = thumbnails.get(imageKey);
+    if (source || retryKey !== requestKey) {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+    retryKey = requestKey;
+    const retries = previewRetries.get(requestKey) || 0;
+    if (!source && selected && !catalog.selected && catalog.status === 'ready' && retries < 3 && !retryTimer) {
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        if (!active) return;
+        previewRetries.set(requestKey, retries + 1);
+        previewRequest = '';
+        paint();
+      }, 1500);
+    }
     if (catalog.status === 'loading') {
       note.content = ' 正在載入我的貼圖… · Esc 取消';
     } else if (catalog.status === 'error') {
@@ -160,7 +182,10 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
       note.content = view.draft ? ' 已保留文字草稿，請先清空草稿再傳送貼圖。\n Esc 返回' : ' Enter 傳送貼圖 · Esc 取消';
     } else {
       let detail = clean(catalog.note || '沒有可用的貼圖');
-      if (items.length) detail = source ? '靜態預覽，不含音效' : '正在載入貼圖預覽… · r 重新載入';
+      if (items.length) {
+        detail = source ? '靜態預覽，不含音效' : '正在載入貼圖預覽… · r 重新載入';
+        if (!source && retries >= 3) detail = '貼圖預覽載入失敗 · r 重試 · 可繼續選取貼圖';
+      }
       note.content = ` hjkl 移動 · [/] 貼圖包 · n/p 翻頁 · Enter 選取 · Esc 返回\n ${detail}`;
     }
   };
@@ -202,6 +227,10 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
       paint();
     },
     dismiss,
+    dispose() {
+      active = false;
+      clearTimeout(retryTimer);
+    },
     handleKey(key) {
       if (!active) return;
       const name = key.name.toLowerCase();
@@ -219,6 +248,7 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
         return;
       }
       if (name === 'r' && catalog.status === 'ready') {
+        previewRetries.clear();
         previewRequest = '';
         paint();
         return;

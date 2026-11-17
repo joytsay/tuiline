@@ -881,6 +881,7 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
   return {
     onState,
     dispose: () => {
+      stickerPicker.dispose();
       videoController?.abort();
       clearTimeout(draftTimer);
       backend.close();

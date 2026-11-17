@@ -1,8 +1,13 @@
 package gui
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"io"
 	"net/http"
 	"regexp"
@@ -79,8 +84,41 @@ func fetchStickerCDN(ctx context.Context, s Sticker) string {
 	if url == "" {
 		return ""
 	}
-	return fetchCDN(ctx, url, 512)
+	return opaqueStickerPreview(fetchCDN(ctx, url, 512))
 }
+
+// Flatten sticker transparency into the image itself: native terminal graphics
+// can reveal the terminal background even when the containing card is white.
+func opaqueStickerPreview(data string) string {
+	if !isDataImage(data) {
+		return ""
+	}
+	_, encoded, ok := strings.Cut(data, ",")
+	if !ok {
+		return ""
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return ""
+	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || config.Width < 1 || config.Height < 1 || config.Width > 512 || config.Height > 512 {
+		return ""
+	}
+	source, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return ""
+	}
+	opaque := image.NewRGBA(source.Bounds())
+	draw.Draw(opaque, opaque.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
+	draw.Draw(opaque, opaque.Bounds(), source, source.Bounds().Min, draw.Over)
+	var output bytes.Buffer
+	if err := png.Encode(&output, opaque); err != nil || output.Len() > 65536 {
+		return ""
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(output.Bytes())
+}
+
 func imageCost(id, data string) int { return len(id) + len(data) + 6 }
 func isDataImage(data string) bool {
 	if len(data) > 87407 {

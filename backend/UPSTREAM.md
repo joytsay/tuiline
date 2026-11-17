@@ -14,7 +14,8 @@ MIT license and copyright notice.
 
 `scripts/build-line.js` applies tuiline's patches through a temporary Go overlay,
 including the additional Go files in `line-tui/backend/`. The bundled source
-itself remains the imported snapshot.
+also includes a local change in `internal/gui/images.go` to composite sticker
+preview transparency onto white before sending images to the terminal.
 
 Build from the repository root with `npm run build:line`.
 Run backend regression tests with `node scripts/build-line.js --test`.
