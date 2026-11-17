@@ -607,7 +607,9 @@ func (d *Direct) Login(ctx context.Context, confirm <-chan struct{}, emit func(L
 			return emit(LoginEvent{Stage: "phone"})
 		case session.QRLoginPIN:
 			return emitPIN(ev.PIN, emit)
-		case session.QRLoginPhoneAccepted, session.QRLoginApproved:
+		case session.QRLoginPhoneAccepted:
+			return emit(LoginEvent{Stage: "finalizing"})
+		case session.QRLoginApproved:
 			return emit(LoginEvent{Stage: "saving"})
 		}
 		return nil
@@ -615,7 +617,7 @@ func (d *Direct) Login(ctx context.Context, confirm <-chan struct{}, emit func(L
 	if err != nil {
 		var outcome *session.LoginError
 		if errors.As(err, &outcome) && (outcome.Dispatched || outcome.Approved || outcome.SaveUncertain) {
-			return ErrLoginUncertain
+			return errors.Join(ErrLoginUncertain, err)
 		}
 		return classify(err)
 	}

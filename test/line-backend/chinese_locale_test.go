@@ -39,3 +39,9 @@ func TestTUIChineseNotificationText(t *testing.T) {
 		t.Fatalf("Japanese notification changed: %q", got)
 	}
 }
+
+func TestChineseLoginPromptIncludesKeyboardShortcut(t *testing.T) {
+	if got := chineseText("Please log in to LINE"); got != "請按 Ctrl+L 登入 LINE" {
+		t.Fatal(got)
+	}
+}

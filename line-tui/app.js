@@ -579,9 +579,10 @@ async function createApp(renderer, backend, { openLink = openUrl, playVideo: pla
       loginImage.source = undefined;
       imageSource = '';
     }
-    loginText.visible = Boolean(login.active || login.canRetry);
+    loginText.visible = Boolean(login.active || login.canRetry || login.stage === 'uncertain');
+    const loginControls = login.stage === 'uncertain' ? 'Ctrl+R 檢查已儲存的登入狀態' : 'Ctrl+X cancel · Ctrl+L retry';
     // eslint-disable-next-line max-len
-    loginText.content = `${clean(login.statusText)}${login.pin ? `\nPIN: ${clean(login.pin)}` : ''}${login.canConfirm ? '\nCtrl+Y to confirm' : ''}\nCtrl+X cancel · Ctrl+L retry`;
+    loginText.content = `${clean(login.statusText)}${login.pin ? `\nPIN: ${clean(login.pin)}` : ''}${login.canConfirm ? '\nCtrl+Y to confirm' : ''}\n${loginControls}`;
     status.height = view.reply ? 3 : 2;
     const replyText = clean(view.reply?.text || '[Attachment]').replace(/\n/g, ' ');
     const replyHint = view.reply

@@ -1068,3 +1068,26 @@ test('Ctrl+L opens login from insert and sticker views, retries errors, and expl
   assert.match(setup.captureCharFrame(), /Ctrl\+Y/);
   assert.equal(commands.length, count);
 });
+
+test('login outcome uncertainty stays visible after phone confirmation', async (t) => {
+  const { createTestRenderer } = await import('@opentui/core/testing');
+  const setup = await createTestRenderer({ width: 110, height: 30, kittyKeyboard: true });
+  const backend = new EventEmitter();
+  backend.command = () => {};
+  backend.close = () => {};
+  const app = await createApp(setup.renderer, backend);
+  t.after(() => {
+    app.dispose();
+    setup.renderer.destroy();
+  });
+  backend.emit('state', {
+    chats: [],
+    messages: [],
+    statusText: '請按 Ctrl+L 登入 LINE',
+    login: { stage: 'uncertain', active: false, canRetry: false, statusText: 'LINE 已核准登入，但無法儲存登入資料。' },
+  });
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), /LINE 已核准登入/);
+  assert.match(setup.captureCharFrame(), /Ctrl\+R 檢查/);
+  assert.match(setup.captureCharFrame(), /Ctrl\+L 登入 LINE/);
+});

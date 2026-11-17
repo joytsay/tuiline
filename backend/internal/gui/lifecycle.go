@@ -171,8 +171,8 @@ func (e *Engine) startWatch() {
 }
 
 func loginView(stage, attempt, request, image, pin, reason string) Login {
-	labels := map[string]string{"idle": "QRコードでログイン", "preparing": "QRコードを準備しています…", "replace-confirmation": "この端末に保存済みのLINEセッションを置き換えますか？", "scan": "スマートフォンのLINEでQRコードを読み取ってください", "phone": "スマートフォンのLINEでログインを承認してください", "saving": "承認結果を確認し、この端末へ安全に保存しています…", "success": "ログイン情報を保存しました。トークを読み込みます", "cancelled": "ログインを中止しました", "expired": "QRコードの有効期限が切れました。もう一度お試しください", "error": "ログインできませんでした。もう一度お試しください", "uncertain": "ログイン結果を確認できません。スマートフォンの表示を確認し、再読み込みで保存状態を確認してください"}
-	active := stage == "preparing" || stage == "replace-confirmation" || stage == "scan" || stage == "phone" || stage == "saving"
+	labels := map[string]string{"idle": "QRコードでログイン", "preparing": "QRコードを準備しています…", "replace-confirmation": "この端末に保存済みのLINEセッションを置き換えますか？", "scan": "スマートフォンのLINEでQRコードを読み取ってください", "phone": "スマートフォンのLINEでログインを承認してください", "saving": "承認結果を確認し、この端末へ安全に保存しています…", "finalizing": "手機已確認，正在等待 LINE 完成登入…", "success": "ログイン情報を保存しました。トークを読み込みます", "cancelled": "ログインを中止しました", "expired": "QRコードの有効期限が切れました。もう一度お試しください", "error": "ログインできませんでした。もう一度お試しください", "uncertain": "ログイン結果を確認できません。スマートフォンの表示を確認し、再読み込みで保存状態を確認してください"}
+	active := stage == "preparing" || stage == "replace-confirmation" || stage == "scan" || stage == "phone" || stage == "finalizing" || stage == "saving"
 	v := Login{Stage: stage, Attempt: attempt, Request: request, Active: active, Label: "QRコードでログイン", StatusText: labels[stage], CanConfirm: stage == "replace-confirmation", CanCancel: active, CanRetry: stage == "cancelled" || stage == "expired" || stage == "error"}
 	if stage == "scan" {
 		v.Image = image
@@ -244,7 +244,18 @@ func (e *Engine) startLogin(c Command) {
 			}
 			if errors.Is(err, ErrLoginUncertain) {
 				stage = "uncertain"
-				reason = ""
+				reason = "登入結果未確認，請按 Ctrl+R 檢查已儲存的登入狀態。"
+				var outcome *session.LoginError
+				if errors.As(err, &outcome) {
+					switch outcome.Stage {
+					case session.LoginFinal:
+						reason = "手機已確認，但無法確認 LINE 的登入回應。請按 Ctrl+R 檢查登入狀態。"
+					case session.LoginSetup:
+						reason = "LINE 已核准登入，但帳號或加密金鑰設定失敗，尚未儲存登入資料。請檢查網路與系統時間。"
+					case session.LoginSave:
+						reason = "LINE 已核准登入，但無法儲存登入資料。請確認金鑰圈已解鎖，並按 Ctrl+R 檢查狀態。"
+					}
+				}
 			}
 		}
 		e.state.Login = loginView(stage, attempt, request, "", "", reason)
@@ -273,7 +284,7 @@ func (e *Engine) cancelLoginAttempt() {
 		return
 	}
 	stage := "cancelled"
-	if e.state.Login.Stage == "phone" || e.state.Login.Stage == "saving" {
+	if e.state.Login.Stage == "phone" || e.state.Login.Stage == "finalizing" || e.state.Login.Stage == "saving" {
 		stage = "uncertain"
 	}
 	attempt, request := e.state.Login.Attempt, e.state.Login.Request

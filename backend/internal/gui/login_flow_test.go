@@ -99,3 +99,38 @@ func TestLoginStorageUnavailableGivesActionableMessage(t *testing.T) {
 		t.Fatal("failed login offered replacement confirmation")
 	}
 }
+
+func TestPostApprovalFailuresPreserveStageAndDisplayReason(t *testing.T) {
+	for _, phase := range []session.LoginStage{session.LoginFinal, session.LoginSetup, session.LoginSave} {
+		t.Run(string(phase), func(t *testing.T) {
+			e := NewEngine(Operations{Login: func(context.Context, <-chan struct{}, func(LoginEvent) error) error {
+				return errors.Join(ErrLoginUncertain, &session.LoginError{Stage: phase, Dispatched: true, Approved: true})
+			}}, nil)
+			defer e.Close()
+			e.Handle(Command{Action: "login", Request: "ui-test"})
+			e.Wait()
+			v := e.View()
+			if v.Login.Stage != "uncertain" || v.Login.StatusText == "" {
+				t.Fatal("lost post-approval error", v.Login)
+			}
+			expected := map[session.LoginStage]string{session.LoginFinal: "登入回應", session.LoginSetup: "加密金鑰", session.LoginSave: "金鑰圈"}
+			if !strings.Contains(v.Login.StatusText, expected[phase]) {
+				t.Fatal("wrong stage diagnostic", v.Login)
+			}
+		})
+	}
+}
+
+func TestFinalizingLoginRemainsActiveAndCancelsConservatively(t *testing.T) {
+	v := loginView("finalizing", "attempt", "ui-test", "", "", "")
+	if !v.Active || !v.CanCancel || v.CanConfirm {
+		t.Fatal("finalizing controls invalid", v)
+	}
+	e := NewEngine(Operations{}, nil)
+	defer e.Close()
+	e.state.Login = v
+	e.cancelLoginAttempt()
+	if e.View().Login.Stage != "uncertain" {
+		t.Fatal("finalizing cancellation reported safe retry")
+	}
+}

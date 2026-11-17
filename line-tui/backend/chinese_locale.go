@@ -4,7 +4,7 @@ import "strings"
 
 // Translate generated UI fields only. User content stays exactly as received.
 var chineseLabels = map[string]string{
-	"Preparing…": "準備中…", "Please log in to LINE": "請登入 LINE", "Fictional conversation · Demo": "模擬對話 · 示範模式",
+	"Preparing…": "準備中…", "Please log in to LINE": "請按 Ctrl+L 登入 LINE", "Fictional conversation · Demo": "模擬對話 · 示範模式",
 	"Connected": "已連線", "Checking LINE…": "正在連線至 LINE…", "Could not load LINE. Please reload": "無法載入 LINE，請重新整理",
 	"Could not verify the LINE response": "無法確認 LINE 回應", "Receiving stopped. Reload in Settings": "接收已停止，請重新整理",
 	"Up to 500 chats can be loaded. List refresh was deferred to preserve new chats and drafts": "最多可載入 500 個聊天室，為保留下書及新對話，已暫停更新列表",
