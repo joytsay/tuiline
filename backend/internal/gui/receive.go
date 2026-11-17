@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+type pendingNotice struct {
+	At       time.Time
+	Message  Message
+	ChatName string
+	Group    bool
+}
+
 var revisionPattern = regexp.MustCompile(`^[0-9]{1,24}$`)
 
 func (e *Engine) scheduleResync() {
@@ -44,7 +51,14 @@ func (e *Engine) notice(m Message, chat string) {
 	if len(e.noticePending) >= 500 {
 		return
 	}
-	e.noticePending[chat] = when
+	notice := pendingNotice{At: when, Message: m}
+	for _, item := range e.state.Chats {
+		if item.ID == chat {
+			notice.ChatName, notice.Group = item.Name, item.Group
+			break
+		}
+	}
+	e.noticePending[chat] = notice
 	if e.noticeTimer != nil {
 		return
 	}
@@ -62,17 +76,20 @@ func (e *Engine) notice(m Message, chat string) {
 		}
 		e.noticeTimer = nil
 		eligible := false
-		for id, at := range e.noticePending {
-			if time.Since(at) > 30*time.Second {
+		var latest pendingNotice
+		for id, pending := range e.noticePending {
+			if time.Since(pending.At) > 30*time.Second {
 				continue
 			}
 			if e.focusID == id && e.focusSession == e.state.Session && e.focusSelection == e.state.Selection {
 				continue
 			}
 			eligible = true
-			break
+			if latest.At.IsZero() || pending.At.After(latest.At) {
+				latest = pending
+			}
 		}
-		e.noticePending = map[string]time.Time{}
+		e.noticePending = map[string]pendingNotice{}
 		if !eligible || !e.state.Notifications || e.state.Mode != "live" {
 			return
 		}
@@ -81,6 +98,10 @@ func (e *Engine) notice(m Message, chat string) {
 		locale := e.locale
 		if e.ops.NotifyLocalized != nil {
 			notify = func(ctx context.Context) bool { return e.ops.NotifyLocalized(ctx, locale) }
+		}
+		if e.ops.NotifyMessage != nil {
+			title, body := messageNotification(locale, latest)
+			notify = func(ctx context.Context) bool { return e.ops.NotifyMessage(ctx, title, body) }
 		}
 		if notify == nil {
 			e.state.NotificationNote = "通知を表示できません。notify-send の導入を確認してください"

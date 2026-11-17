@@ -105,7 +105,9 @@ TUI controls yet. History is limited to 100 messages per chat. The local build
 supports 5,000 chats. Drafts live in memory.
 Uncertain sends are shown and blocked from
 automatic resending; check LINE and refresh before deliberately trying again.
-Desktop notifications are disabled by this frontend.
+Desktop notifications are enabled through `notify-send` while the app is running.
+Group notifications show the group name, sender, and message preview; direct
+notifications show the sender and message preview.
 
 The original Telegram implementation is available with `npm run dev:telegram`;
 its original documentation is in [docs/TELEGRAM.md](docs/TELEGRAM.md). Existing

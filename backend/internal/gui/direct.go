@@ -39,7 +39,7 @@ func NewDirect() *Direct {
 	return &Direct{Manager: session.NewManager(session.KeychainStore{}), Lock: session.Lock, names: map[string]string{}}
 }
 func (d *Direct) Operations() Operations {
-	return Operations{Snapshot: d.Snapshot, History: d.History, Send: d.Send, Action: d.Action, Download: d.Download, Catalog: d.Catalog, SendSticker: d.SendSticker, Login: d.Login, Watch: d.Watch, Notify: staticNotify, NotifyLocalized: localizedNotify, FetchAvatar: fetchAvatarCDN, FetchSticker: fetchStickerCDN, Profiles: d.Profiles}
+	return Operations{Snapshot: d.Snapshot, History: d.History, Send: d.Send, Action: d.Action, Download: d.Download, Catalog: d.Catalog, SendSticker: d.SendSticker, Login: d.Login, Watch: d.Watch, Notify: staticNotify, NotifyLocalized: localizedNotify, NotifyMessage: notifyMessage, FetchAvatar: fetchAvatarCDN, FetchSticker: fetchStickerCDN, Profiles: d.Profiles}
 }
 func (d *Direct) acquire(ctx context.Context) (func(), error) {
 	for {

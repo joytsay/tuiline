@@ -68,7 +68,13 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
     cursor = Math.max(0, Math.min(cursor, items.length - 1));
     const pack = catalog.products?.find((product) => product.id === catalog.packageId);
     const packPosition = `${(catalog.products || []).indexOf(pack) + 1}/${catalog.products?.length || 0}`;
-    const pagePosition = `${(catalog.page || 0) + 1}/${catalog.pages || 0}`;
+    const visibleRows = Math.max(1, Math.floor(body.height / 7));
+    const screenSize = visibleRows * 4;
+    const screensPerBatch = Math.ceil(40 / screenSize);
+    const packCount = pack?.count || ((catalog.pages || 1) - 1) * 40 + items.length;
+    const packScreens = Math.floor(packCount / 40) * screensPerBatch + Math.ceil((packCount % 40) / screenSize);
+    const screen = (catalog.page || 0) * screensPerBatch + Math.floor(cursor / screenSize) + 1;
+    const pagePosition = `${screen}/${Math.max(1, packScreens)}`;
     const packs = catalog.products || [];
     const packIndex = packs.indexOf(pack);
     const pagesInPack = (product) =>
@@ -85,8 +91,7 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
     const requestKey = selected ? `${scope}:${catalog.packageId}:${catalog.page}:${imageKey}` : '';
     const gridItems = catalog.selected ? [catalog.selected] : items;
     const rowCount = Math.ceil(gridItems.length / 4);
-    const visibleRows = Math.max(1, Math.floor(body.height / 7));
-    const firstRow = catalog.selected ? 0 : Math.max(0, Math.floor(cursor / 4) - visibleRows + 1);
+    const firstRow = catalog.selected ? 0 : Math.floor(cursor / screenSize) * visibleRows;
     const start = firstRow * 4;
     const end = Math.min(gridItems.length, start + visibleRows * 4);
     const nextGridKey = `${scope}:${key}:${catalog.selected?.id || ''}:${start}:${end}`;
@@ -280,6 +285,13 @@ async function createStickerPicker(renderer, backend, { parent, getContext, getV
         if (pack) command('sticker-page', { packageId: pack.id, page: 0 });
       }
       if (['n', 'p'].includes(name)) {
+        const screenSize = Math.max(1, Math.floor(body.height / 7)) * 4;
+        const nextScreen = Math.floor(cursor / screenSize) + (name === 'n' ? 1 : -1);
+        if (nextScreen >= 0 && nextScreen * screenSize < count) {
+          cursor = nextScreen * screenSize;
+          paint();
+          return;
+        }
         const page = (catalog.page || 0) + (name === 'n' ? 1 : -1);
         if (page >= 0 && page < catalog.pages) {
           command('sticker-page', { packageId: catalog.packageId, page });

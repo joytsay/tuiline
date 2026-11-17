@@ -27,3 +27,15 @@ func TestTUIChineseLocalePreservesUserContent(t *testing.T) {
 		t.Fatal("projection mutated source state")
 	}
 }
+
+func TestTUIChineseNotificationText(t *testing.T) {
+	if got := appText("zh-TW", "新しいメッセージがあります"); got != "收到新訊息" {
+		t.Fatalf("notification text = %q, want Traditional Chinese", got)
+	}
+	if got := appText("en", "新しいメッセージがあります"); got != "You have a new message" {
+		t.Fatalf("English notification changed: %q", got)
+	}
+	if got := appText("ja", "新しいメッセージがあります"); got != "新しいメッセージがあります" {
+		t.Fatalf("Japanese notification changed: %q", got)
+	}
+}

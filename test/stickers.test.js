@@ -271,6 +271,22 @@ test('sticker grid has four columns, highlights selection, and scrolls after res
   await setup.renderOnce();
   await setup.renderOnce();
   const find = (id) => setup.renderer.root.findDescendantById(id);
+  const screenSize = Math.max(1, Math.floor(find('line-sticker-grid').height / 7)) * 4;
+  const pageCount = Math.ceil(items.length / screenSize);
+  assert.match(setup.captureCharFrame(), new RegExp(`本包 1/${pageCount} 頁`));
+  await Promise.all(
+    Array.from({ length: screenSize }, (_, index) => find(`line-sticker-preview-${index}`)?.loadPromise),
+  );
+  setup.mockInput.pressKey('n');
+  await setup.renderOnce();
+  await Promise.all(
+    Array.from({ length: screenSize }, (_, index) => find(`line-sticker-preview-${screenSize + index}`)?.loadPromise),
+  );
+  assert.match(setup.captureCharFrame(), new RegExp(`本包 2/${pageCount} 頁`));
+  assert.ok(find(`line-sticker-cell-${screenSize}`));
+  setup.mockInput.pressKey('p');
+  await setup.renderOnce();
+  assert.match(setup.captureCharFrame(), new RegExp(`本包 1/${pageCount} 頁`));
   const cards = [0, 1, 2, 3].map((index) => find(`line-sticker-cell-${index}`));
   assert.equal(new Set(cards.map((card) => card.y)).size, 1);
   assert.equal(new Set(cards.map((card) => card.x)).size, 4);

@@ -95,6 +95,10 @@ function patchFile(file, source) {
   }
   if (file === 'internal/gui/locale.go') {
     change(
+      'func appText(locale, value string) string {',
+      'func appText(locale, value string) string {\n if locale == "zh-TW" { return chineseText(appText("en", value)) }',
+    );
+    change(
       'func (e *Engine) localizedView() View {',
       'func (e *Engine) localizedView() View {\n if e.locale == "zh-TW" { return e.chineseView() }',
     );

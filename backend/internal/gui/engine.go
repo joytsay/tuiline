@@ -221,6 +221,7 @@ type Operations struct {
 	Watch           func(context.Context, func(WatchEvent)) error
 	Notify          func(context.Context) bool
 	NotifyLocalized func(context.Context, string) bool
+	NotifyMessage   func(context.Context, string, string) bool
 	FetchAvatar     func(context.Context, string) string
 	FetchSticker    func(context.Context, Sticker) string
 	Profiles        func(context.Context, []string) (map[string]ProfileInfo, error)
@@ -296,7 +297,7 @@ type Engine struct {
 	noticeDelay       time.Duration
 	noticeTimer       *time.Timer
 	lastNotice        time.Time
-	noticePending     map[string]time.Time
+	noticePending     map[string]pendingNotice
 	focusID           string
 	focusSession      string
 	focusSelection    int
@@ -328,7 +329,7 @@ func NewEngine(ops Operations, emit func(View)) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	resourceCtx, resourceCancel := context.WithCancel(ctx)
 	stickerCtx, stickerCancel := context.WithCancel(resourceCtx)
-	return &Engine{resourceCtx: resourceCtx, resourceCancel: resourceCancel, stickerCtx: stickerCtx, stickerCancel: stickerCancel, ops: ops, emit: emit, state: initial(), ctx: ctx, cancel: cancel, drafts: map[string]string{}, replies: map[string]Reply{}, local: map[string]Chat{}, known: map[string]Contact{}, seenRevision: map[string]struct{}{}, seenMessages: map[string]struct{}{}, noticePending: map[string]time.Time{}, resyncDelay: 5 * time.Second, noticeDelay: 500 * time.Millisecond, startedAt: time.Now(), picturePaths: map[string]string{}, profileAttempted: map[string]bool{}, avatarLoading: map[string]bool{}, avatarFailed: map[string]bool{}, avatarData: map[string]string{}, stickerAttempted: map[string]bool{}, stickerData: map[string]string{}, demoMessages: map[string][]Message{}}
+	return &Engine{resourceCtx: resourceCtx, resourceCancel: resourceCancel, stickerCtx: stickerCtx, stickerCancel: stickerCancel, ops: ops, emit: emit, state: initial(), ctx: ctx, cancel: cancel, drafts: map[string]string{}, replies: map[string]Reply{}, local: map[string]Chat{}, known: map[string]Contact{}, seenRevision: map[string]struct{}{}, seenMessages: map[string]struct{}{}, noticePending: map[string]pendingNotice{}, resyncDelay: 5 * time.Second, noticeDelay: 500 * time.Millisecond, startedAt: time.Now(), picturePaths: map[string]string{}, profileAttempted: map[string]bool{}, avatarLoading: map[string]bool{}, avatarFailed: map[string]bool{}, avatarData: map[string]string{}, stickerAttempted: map[string]bool{}, stickerData: map[string]string{}, demoMessages: map[string][]Message{}}
 }
 func (e *Engine) View() View { e.mu.Lock(); defer e.mu.Unlock(); return e.localizedView() }
 func (e *Engine) publish() {
@@ -434,7 +435,7 @@ func (e *Engine) resetIdentity() {
 	e.revisionOrder = nil
 	e.seenMessages = map[string]struct{}{}
 	e.messageOrder = nil
-	e.noticePending = map[string]time.Time{}
+	e.noticePending = map[string]pendingNotice{}
 	e.focusID = ""
 	e.pending = false
 	e.fileBusy = false
