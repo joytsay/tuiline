@@ -92,6 +92,7 @@ try {
         './internal/gui',
         './internal/events',
         './internal/messaging',
+        './internal/session',
       ]
     : ['build', '-overlay', overlay, '-trimpath', '-buildvcs=false', '-o', output, './cmd/line-gui'];
   const result = spawnSync('go', args, {

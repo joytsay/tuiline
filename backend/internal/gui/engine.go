@@ -152,6 +152,7 @@ type PhotoThumbnail struct {
 	Data   string `json:"data"`
 }
 type View struct {
+	AuthDiagnostic   string                    `json:"authDiagnostic"`
 	Members          []Contact                 `json:"members"`
 	MembersStatus    string                    `json:"membersStatus"`
 	MembersNote      string                    `json:"membersNote"`
@@ -423,6 +424,7 @@ func (e *Engine) available(c Command) bool {
 	return e.current(c) && e.state.Status == "ready" && !e.state.Busy && !e.pending && !e.mutationActive && !e.fileBusy
 }
 func (e *Engine) resetIdentity() {
+	e.state.AuthDiagnostic = ""
 	e.state.Members = nil
 	e.state.MembersStatus = "idle"
 	e.state.MembersNote = ""

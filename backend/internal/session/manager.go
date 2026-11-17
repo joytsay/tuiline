@@ -298,7 +298,7 @@ func (m *Manager) do(ctx context.Context, call func(API) error, retry bool) erro
 		}
 		stale := current.AccessToken != s.AccessToken || current.RefreshToken != s.RefreshToken
 		if !stale && line.IsLoggedOut(err) {
-			return m.invalidate(s)
+			return m.invalidate(s, "request", err)
 		}
 		if stale {
 			s = current
@@ -322,13 +322,13 @@ func (m *Manager) do(ctx context.Context, call func(API) error, retry bool) erro
 		}
 		err = call(api)
 		if line.IsLoggedOut(err) {
-			return m.invalidate(s)
+			return m.invalidate(s, "request", err)
 		}
 	}
 	return remoteError("request", err)
 }
 
-func (m *Manager) invalidate(failed *State) error {
+func (m *Manager) invalidate(failed *State, source string, cause error) error {
 	s, err := m.Store.Load()
 	if err != nil {
 		return err
@@ -344,7 +344,7 @@ func (m *Manager) invalidate(failed *State) error {
 	if err := m.Store.Save(s); err != nil {
 		return err
 	}
-	return ErrSessionInvalidated
+	return invalidationError(source, cause)
 }
 
 // RecoverStream handles auth errors from an SSE connection under the command lock.
@@ -369,7 +369,7 @@ func (m *Manager) RecoverStream(ctx context.Context, generation, accessToken str
 		return nil
 	}
 	if line.IsLoggedOut(cause) {
-		return m.invalidate(s)
+		return m.invalidate(s, "stream", cause)
 	}
 	if !line.IsAuthError(cause) {
 		return remoteError("stream", cause)

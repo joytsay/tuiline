@@ -111,17 +111,20 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 	defer unlock()
 	saved, err := manager.Store.Load()
 	if errors.Is(err, session.ErrNotFound) || errors.Is(err, session.ErrSessionInvalidated) || saved != nil && saved.Invalidated {
-		return Snapshot{}, ErrUnauthenticated
+		if errors.Is(err, session.ErrNotFound) {
+			return Snapshot{}, snapshotError("load-session", err)
+		}
+		return Snapshot{}, snapshotError("load-session", session.ErrSessionInvalidated)
 	}
 	if err != nil {
-		return Snapshot{}, err
+		return Snapshot{}, snapshotError("load-session", err)
 	}
 	if saved == nil {
-		return Snapshot{}, ErrUnauthenticated
+		return Snapshot{}, snapshotError("load-session", session.ErrNotFound)
 	}
 	var profile *line.Profile
 	if err = manager.DoContext(ctx, func(api session.API) (err error) { profile, err = api.GetProfileContext(ctx); return }); err != nil {
-		return Snapshot{}, classify(err)
+		return Snapshot{}, snapshotError("profile", err)
 	}
 	if profile == nil || !fullID.MatchString(profile.Mid) {
 		return Snapshot{}, errors.New("invalid profile")
@@ -134,8 +137,8 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	var ids []string
 	if err = manager.Do(func(api session.API) (err error) { ids, err = api.GetAllContactIds(); return }); err != nil {
-		if errors.Is(classify(err), ErrUnauthenticated) {
-			return Snapshot{}, ErrUnauthenticated
+		if errors.Is(classify(err), ErrUnauthenticated) || line.IsAuthError(session.ProtocolError(err)) {
+			return Snapshot{}, snapshotError("contacts", err)
 		}
 		result.ContactsFailed = true
 		result.NamesPartial = true
@@ -148,8 +151,8 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 	var blocked []string
 	if err = manager.Do(func(api session.API) (err error) { blocked, err = api.GetBlockedContactIds(); return }); err != nil {
-		if errors.Is(classify(err), ErrUnauthenticated) {
-			return Snapshot{}, ErrUnauthenticated
+		if errors.Is(classify(err), ErrUnauthenticated) || line.IsAuthError(session.ProtocolError(err)) {
+			return Snapshot{}, snapshotError("blocked-contacts", err)
 		}
 		result.ContactsFailed = true
 		result.NamesPartial = true
@@ -180,8 +183,8 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 		var response *line.ContactsResponse
 		if err = manager.Do(func(api session.API) (err error) { response, err = api.GetContactsV2(batch); return }); err != nil || response == nil {
-			if errors.Is(classify(err), ErrUnauthenticated) {
-				return Snapshot{}, ErrUnauthenticated
+			if errors.Is(classify(err), ErrUnauthenticated) || line.IsAuthError(session.ProtocolError(err)) {
+				return Snapshot{}, snapshotError("contact-details", err)
 			}
 			result.ContactsFailed = true
 			result.NamesPartial = true
@@ -216,7 +219,7 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 		var boxes *line.MessageBoxesResponse
 		if err = manager.Do(func(api session.API) (err error) { boxes, err = api.GetMessageBoxes(options); return }); err != nil {
-			return Snapshot{}, classify(err)
+			return Snapshot{}, snapshotError("message-boxes", err)
 		}
 		if boxes == nil || len(boxes.MessageBoxes) > 100 {
 			return Snapshot{}, errors.New("invalid chat page")
@@ -275,8 +278,8 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 			var response *line.ContactsResponse
 			batch := direct[j:min(j+100, len(direct))]
 			err = manager.Do(func(api session.API) (err error) { response, err = api.GetContactsV2(batch); return })
-			if errors.Is(classify(err), ErrUnauthenticated) {
-				return Snapshot{}, ErrUnauthenticated
+			if errors.Is(classify(err), ErrUnauthenticated) || line.IsAuthError(session.ProtocolError(err)) {
+				return Snapshot{}, snapshotError("group-details", err)
 			}
 			if err == nil && response != nil {
 				for _, id := range batch {
@@ -294,8 +297,8 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 			var response *line.GetChatsResponse
 			batch := groups[j:min(j+20, len(groups))]
 			err = manager.Do(func(api session.API) (err error) { response, err = api.GetChats(batch, false, false); return })
-			if errors.Is(classify(err), ErrUnauthenticated) {
-				return Snapshot{}, ErrUnauthenticated
+			if errors.Is(classify(err), ErrUnauthenticated) || line.IsAuthError(session.ProtocolError(err)) {
+				return Snapshot{}, snapshotError("group-details", err)
 			}
 			if err == nil && response != nil {
 				for _, group := range response.Chats {
@@ -327,7 +330,7 @@ func (d *Direct) Snapshot(ctx context.Context) (Snapshot, error) {
 	return result, nil
 }
 func classify(err error) error {
-	if errors.Is(err, session.ErrNotFound) || errors.Is(err, session.ErrSessionInvalidated) || line.IsAuthError(session.ProtocolError(err)) {
+	if errors.Is(err, session.ErrNotFound) || errors.Is(err, session.ErrSessionInvalidated) || line.IsLoggedOut(session.ProtocolError(err)) {
 		return ErrUnauthenticated
 	}
 	return err

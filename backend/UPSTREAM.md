@@ -20,6 +20,9 @@ Local changes in `internal/gui/{engine,receive,notify,direct}.go` include
 sender names, group names, and message previews in desktop notifications.
 `internal/gui/mentions.go` and `internal/messaging/mentions.go` add group member
 lookup and native LINE mention metadata, with hooks in the engine and send path.
+Authentication diagnostics preserve fixed invalidation source/reason codes in
+`internal/session/invalidation.go` and `internal/gui/auth_diagnostic.go`, without
+logging credentials or remote response bodies.
 
 Build from the repository root with `npm run build:line`.
 Run backend regression tests with `node scripts/build-line.js --test`.

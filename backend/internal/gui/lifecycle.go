@@ -15,6 +15,7 @@ func (e *Engine) refresh(resync bool) {
 		return
 	}
 	e.state.Busy = true
+	e.state.AuthDiagnostic = ""
 	e.state.Status = "checking"
 	e.state.StatusText = "LINEを確認しています…"
 	e.state.ContactsStatus = "loading"
@@ -36,6 +37,11 @@ func (e *Engine) refresh(resync bool) {
 			} else {
 				e.state.Status = "error"
 				e.state.StatusText = "LINEを読み込めませんでした。再読み込みしてください"
+			}
+			var diagnostic *snapshotFailure
+			if errors.As(err, &diagnostic) {
+				e.state.AuthDiagnostic = diagnostic.Error()
+				e.state.HistoryNote = diagnostic.Error()
 			}
 			e.publish()
 			return

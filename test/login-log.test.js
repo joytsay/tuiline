@@ -27,8 +27,15 @@ test('login progress is saved and printed after exit without QR, PIN, or account
   logger.record(view);
   logger.record(view);
   logger.record({ ...view, login: { ...view.login, stage: 'uncertain', statusText: '無法儲存登入資料' } });
+  logger.record({
+    ...view,
+    status: 'unauthenticated',
+    authDiagnostic: '載入失敗 [profile: session-invalidated]',
+    login: { stage: 'success', statusText: '登入資訊已儲存' },
+  });
   const saved = readFileSync(file, 'utf8');
-  assert.equal(saved.trim().split('\n').length, 2);
+  assert.equal(saved.trim().split('\n').length, 3);
+  assert.match(saved, /profile: session-invalidated/);
   assert.match(saved, /login:phone/);
   assert.match(saved, /無法儲存登入資料/);
   assert.doesNotMatch(saved, /123456|PRIVATE/);

@@ -14,7 +14,7 @@ function createLoginLog({ file = path.resolve('tuiline-login.log'), now = () => 
       if (!login?.stage || login.stage === 'idle') return;
       // Log application-generated progress only, never the full backend state.
       // PIN, QR image, login attempt IDs, account data and messages are excluded.
-      const text = String(login.statusText || '')
+      const text = String([login.statusText, view.authDiagnostic].filter(Boolean).join(' · '))
         // eslint-disable-next-line no-control-regex
         .replace(/[\x00-\x1f\x7f-\x9f]/g, ' ')
         .slice(0, 1000);
